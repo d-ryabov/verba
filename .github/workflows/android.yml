@@ -36,7 +36,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: release-apk
-        path: app/build/outputs/apk/release/app-verba-release.apk
+        path: app/build/outputs/apk/release/app-release.apk
 
     # Опционально: создать GitHub Release
     - name: Create Release
@@ -46,4 +46,4 @@ jobs:
         name: Release v1.0.${{ github.run_number }}
         draft: false
         prerelease: false
-        files: app/build/outputs/apk/release/app-verba-release.apk
+        files: app/build/outputs/apk/release/app-release.apk
