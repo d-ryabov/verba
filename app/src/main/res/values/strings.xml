@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Verba</string>
+    <string name="app_name_voice">MVoice</string>
+    <string name="recognize_file">📁 Файл</string>
+    <string name="recognize_microphone">🎤 Микрофон</string>
+    <string name="stop_microphone">🎤 Микрофон</string>
+    <string name="preparing">Подготовка ...</string>
+    <string name="ready">Готов</string>
+    <string name="failed">Ошибка инициализации %s</string>
+    <string name="starting">Запуск\n</string>
+    <string name="say_something">Слушаю…\n</string>
+    <string name="mic_button">Микрофон</string>
+
+</resources>

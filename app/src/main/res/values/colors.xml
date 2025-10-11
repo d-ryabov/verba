@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Основные цвета -->
+    <color name="primaryColor">#1C4D8C</color>          <!-- Приглушённый синий (Material Blue 800) -->
+    <color name="primaryColorDark">#153A6B</color>      <!-- Темнее для нажатия -->
+    <color name="accentColor">#9CE3F5</color>           <!-- Мягкий бирюзовый (неон, но приглушенный) -->
+
+    <!-- Фоны -->
+    <color name="backgroundColor">#F0F8FF</color>       <!-- Очень светлый голубой -->
+    <color name="surfaceColor">#FFFFFF</color>          <!-- Белый для карточек -->
+
+    <!-- Текст -->
+    <color name="textPrimary">#1E1E1E</color>           <!-- Тёмный текст -->
+    <color name="textSecondary">#606060</color>         <!-- Вторичный текст -->
+
+    <!-- Микрофон -->
+    <color name="micIdle">#E0E8F0</color>               <!-- Светло-голубой серый -->
+    <color name="micActive">#4DB6AC</color>             <!-- Приглушённый тёмно-бирюзовый -->
+</resources>

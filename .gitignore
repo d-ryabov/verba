@@ -1,0 +1,90 @@
+# Android
+*.apk
+*.ap_
+*.aab
+*.keystore
+*.jks
+
+# Android Studio
+.gradle/
+build/
+captures/
+*.iml
+*.idea/
+local.properties
+*.lock
+.gradle/
+*.swp
+*.swo
+.DS_Store
+
+# Android cache folders
+.cache/
+.caches/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Proguard
+proguard/
+
+# Log Files
+*.log
+
+# Android Coverage
+coverage/
+
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# External native build folder generated in Android Studio 2.2 and later
+.externalNativeBuild
+
+# Google Services (e.g. google-services.json)
+google-services.json
+
+# Firebase
+firebase.json
+
+# Secrets
+**/local.properties
+**/gradle.properties
+
+# Keystore
+**/*.jks
+**/*.keystore
+
+# Android Studio build cache
+**/intermediates/
+**/outputs/
+
+# Android Studio APKs
+**/app/build/outputs/**/*.apk
+**/app/build/outputs/**/*.aab
+
+# Android Studio mapping
+**/mapping.txt
+**/mapping.txt.*
+
+# Android Studio Gradle cache
+**/.gradle/
+
+# Android Studio Gradle daemon logs
+**/.gradle-daemon.log
+
+# Android Studio Gradle daemon properties
+**/gradle.properties
