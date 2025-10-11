@@ -62,7 +62,6 @@ firebase.json
 
 # Secrets
 **/local.properties
-**/gradle.properties
 
 # Keystore
 **/*.jks
@@ -85,6 +84,3 @@ firebase.json
 
 # Android Studio Gradle daemon logs
 **/.gradle-daemon.log
-
-# Android Studio Gradle daemon properties
-**/gradle.properties
