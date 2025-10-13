@@ -2,7 +2,8 @@ name: Android CI
 
 on:
   push:
-    branches: [ "release" ]
+    branches: [ "release", "develop" ]
+
 permissions:
   contents: write
 
@@ -17,6 +18,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Extract versionName from build.gradle
+      id: get_version
+      run: |
+        VERSION=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -40,12 +47,11 @@ jobs:
         name: release-apk
         path: app/build/outputs/apk/release/app-release.apk
 
-    # Опционально: создать GitHub Release
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v1.0.${{ github.run_number }}
-        name: Release v1.0.${{ github.run_number }}
-        draft: false
-        prerelease: false
+        tag_name: ${{ steps.get_version.outputs.version }}.${{ github.run_number }}
+        name: ${{ github.ref_name == 'develop' && 'Dev Build' || 'Release' }} ${{ steps.get_version.outputs.version }}.${{ github.run_number }}
+        draft: ${{ github.ref_name == 'develop' }}
+        prerelease: ${{ github.ref_name == 'develop' }}
         files: app/build/outputs/apk/release/app-release.apk

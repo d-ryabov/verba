@@ -21,14 +21,18 @@ import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
 public class VoiceService extends Service {
-
     private static final String KEY_VOLUME_LEVEL = "volume_level";
     private static final String KEY_INTENT_NAME = "intent_name";
     private static final String KEY_TEXT_KEY = "text_key";
     private static final String KEY_VOICE_DEBUG = "voice_debug";
+    private static final String KEY_TIMEOUT_LONG = "timeout_long";
+    private static final String KEY_TIMEOUT_SHORT = "timeout_short";
+
+    private static final long DEFAULT_TIMEOUT_LONG = 3000L;
+    private static final long DEFAULT_TIMEOUT_SHORT = 300L;
+
     private static final int NOTIFICATION_ID = 1;
     private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
-
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";
     private static final String ACTION_VOICE_STOP = "org.verba.VOICE_STOP";
 
@@ -41,11 +45,8 @@ public class VoiceService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-
         LibVosk.setLogLevel(LogLevel.INFO);
-
         sharedPref = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
@@ -55,10 +56,8 @@ public class VoiceService extends Service {
                 startActivity(intent);
             }
         }
-
         Notification notification = createNotification();
         startForeground(NOTIFICATION_ID, notification);
-
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             initModel();
         } else {
@@ -81,7 +80,6 @@ public class VoiceService extends Service {
 
     private Notification createNotification() {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     NOTIFICATION_CHANNEL_ID,
@@ -93,7 +91,6 @@ public class VoiceService extends Service {
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
         }
-
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle("Voice Recognition")
                 .setContentText("Listening...")
@@ -106,16 +103,16 @@ public class VoiceService extends Service {
     private void loadSettings() {
         int volumeReduceLevelDefault = 60;
         int volumeLevel = sharedPref.getInt(KEY_VOLUME_LEVEL, volumeReduceLevelDefault);
-
         String intentDefault = "com.dusiassistant.INPUT";
         String intentName = sharedPref.getString(KEY_INTENT_NAME, intentDefault);
-
         String keyDefault = "text";
         String textKey = sharedPref.getString(KEY_TEXT_KEY, keyDefault);
-
         boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
+        long timeoutLong = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
+        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
 
-        config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoiceInput, launchedFromVoiceActivity);
+        config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoiceInput, launchedFromVoiceActivity,
+                timeoutLong, timeoutShort);
     }
 
     private void initModel() {
