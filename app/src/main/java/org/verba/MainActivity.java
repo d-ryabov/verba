@@ -44,8 +44,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_VOICE_DEBUG = "voice_debug";
     private static final String KEY_TIMEOUT_LONG = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
-    private static final long DEFAULT_TIMEOUT_LONG = 3000L;
-    private static final long DEFAULT_TIMEOUT_SHORT = 300L;
+    private static final long DEFAULT_TIMEOUT_LONG = 3200L;
+    private static final long DEFAULT_TIMEOUT_SHORT = 400L;
     private static final int PERMISSIONS_REQUEST_RECORD_AUDIO = 1;
     private static final String ACTION_VOICE_RESULT = "org.verba.VOICE_RESULT";
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";

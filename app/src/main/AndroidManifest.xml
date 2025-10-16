@@ -45,13 +45,11 @@
             android:excludeFromRecents="true"
             android:noHistory="true">
 
-            <!-- Лаунчер -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Внешние вызовы -->
             <intent-filter>
                 <action android:name="org.verba.VOICE" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -13,10 +13,8 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.Settings;
-
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-
 import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
@@ -27,20 +25,18 @@ public class VoiceService extends Service {
     private static final String KEY_VOICE_DEBUG = "voice_debug";
     private static final String KEY_TIMEOUT_LONG = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
-
-    private static final long DEFAULT_TIMEOUT_LONG = 3000L;
-    private static final long DEFAULT_TIMEOUT_SHORT = 300L;
-
+    private static final long DEFAULT_TIMEOUT_LONG = 3200L;
+    private static final long DEFAULT_TIMEOUT_SHORT = 400L;
     private static final int NOTIFICATION_ID = 1;
     private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";
     private static final String ACTION_VOICE_STOP = "org.verba.VOICE_STOP";
-
     private SharedPreferences sharedPref;
     private VoiceConfig config;
     private VoiceProcessor voiceProcessor;
     private boolean isListening = false;
     private boolean launchedFromVoiceActivity = false;
+    private boolean isInitialized = false;
 
     @Override
     public void onCreate() {
@@ -70,7 +66,8 @@ public class VoiceService extends Service {
         if ("org.verba.VOICE".equals(intent.getAction())) {
             launchedFromVoiceActivity = intent.getBooleanExtra("from_voice_activity", false);
             loadSettings();
-            if (!isListening && voiceProcessor != null) {
+            if (!isListening && voiceProcessor != null && !isInitialized) {
+                isInitialized = true;
                 voiceProcessor.startListening();
                 isListening = true;
             }
@@ -110,7 +107,6 @@ public class VoiceService extends Service {
         boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
         long timeoutLong = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
         long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
-
         config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoiceInput, launchedFromVoiceActivity,
                 timeoutLong, timeoutShort);
     }
