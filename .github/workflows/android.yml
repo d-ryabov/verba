@@ -23,9 +23,9 @@ jobs:
       id: get_app_info
       run: |
         APP_ID=$(grep -oP 'applicationId\s+["'\'']\K[^"'\'']+' app/build.gradle)
-        VERSION=$(grep -oP 'versionName\s+["'\'']\K[^"'\'']+' app/build.gradle)
+        VERSION_NAME=$(grep -oP 'versionName\s+["'\'']\K[^"'\'']+' app/build.gradle)
         
-        if [ -z "$APP_ID" ] || [ -z "$VERSION" ]; then
+        if [ -z "$APP_ID" ] || [ -z "$VERSION_NAME" ]; then
           echo "❌ Failed to extract applicationId or versionName from app/build.gradle"
           exit 1
         fi
@@ -37,15 +37,16 @@ jobs:
           exit 1
         fi
 
+        RUN_NUMBER=${{ github.run_number }}
         if [ "${{ github.ref_name }}" == "develop" ]; then
-          FILENAME="${APP_NAME}-${VERSION}-develop.apk"
+          FILENAME="${APP_NAME}-${VERSION_NAME}.${RUN_NUMBER}-develop.apk"
         else
-          FILENAME="${APP_NAME}-${VERSION}-release.apk"
+          FILENAME="${APP_NAME}-${VERSION_NAME}.${RUN_NUMBER}-release.apk"
         fi
 
         echo "application_id=$APP_ID" >> $GITHUB_OUTPUT
         echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
         echo "apk_filename=$FILENAME" >> $GITHUB_OUTPUT
         echo "apk_path=app/build/outputs/apk/release/$FILENAME" >> $GITHUB_OUTPUT
 
@@ -80,8 +81,8 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.get_app_info.outputs.version }}.${{ github.run_number }}
-        name: ${{ github.ref_name == 'develop' && 'Dev Build' || 'Release' }} ${{ steps.get_app_info.outputs.version }}.${{ github.run_number }}
+        tag_name: ${{ steps.get_app_info.outputs.version_name }}.${{ github.run_number }}
+        name: ${{ github.ref_name == 'develop' && 'Dev Build' || 'Release' }} ${{ steps.get_app_info.outputs.version_name }}.${{ github.run_number }}
         draft: ${{ github.ref_name == 'develop' }}
         prerelease: ${{ github.ref_name == 'develop' }}
         files: ${{ steps.get_app_info.outputs.apk_path }}
