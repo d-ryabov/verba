@@ -25,12 +25,13 @@ public class VoiceProcessor implements RecognitionListener {
     private AudioManager audioManager;
     private SoundPool soundPool;
     private int startSoundId, stopSoundId;
-    private Handler handler = new Handler();
+    private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
     private boolean isReduced = false;
     private int originalVolume;
+    private boolean hasReceivedFinalText = false;
 
     public VoiceProcessor(Context context, VoiceConfig config, Consumer<String> onResult, Consumer<String> onError, Runnable onStart, Runnable onStop) {
         this.context = context;
@@ -58,6 +59,7 @@ public class VoiceProcessor implements RecognitionListener {
 
     public void startListening() {
         resetRecognitionState();
+        hasReceivedFinalText = false;
         onVoiceStartCallback.run();
         try {
             Recognizer rec = new Recognizer(ModelManager.getModel(), 16000.0f);
@@ -65,7 +67,7 @@ public class VoiceProcessor implements RecognitionListener {
             speechService.startListening(this);
             playStartSound();
             reduceVolume();
-            startTimeoutTimer(config.getTimeoutLong());
+            startLongTimeout();
         } catch (Exception e) {
             onErrorCallback.accept("Failed to start listening: " + e.getMessage());
         }
@@ -86,14 +88,20 @@ public class VoiceProcessor implements RecognitionListener {
         onVoiceStopCallback.run();
     }
 
-    private void startTimeoutTimer(long timeout) {
+    private void startLongTimeout() {
+        scheduleTimeout(config.getTimeoutLong());
+    }
+
+    private void startShortTimeout() {
+        scheduleTimeout(config.getTimeoutShort());
+    }
+
+    private void scheduleTimeout(long delayMs) {
         if (timeoutRunnable != null) {
             handler.removeCallbacks(timeoutRunnable);
         }
-        timeoutRunnable = () -> {
-            stopListening();
-        };
-        handler.postDelayed(timeoutRunnable, timeout);
+        timeoutRunnable = this::stopListening;
+        handler.postDelayed(timeoutRunnable, delayMs);
     }
 
     private void reduceVolume() {
@@ -165,33 +173,54 @@ public class VoiceProcessor implements RecognitionListener {
     private void handleVoskResult(String jsonStr) {
         try {
             JSONObject obj = new JSONObject(jsonStr);
-            if (obj.has("partial")) {
+            boolean hasPartial = obj.has("partial");
+            boolean hasText = obj.has("text");
+
+            if (hasPartial) {
                 String partial = obj.getString("partial");
                 if (!partial.isEmpty() && !partial.equals(lastPartial)) {
                     if (!lastPartial.isEmpty()) {
                         int start = fullText.lastIndexOf(lastPartial);
-                        if (start != -1) fullText.delete(start, start + lastPartial.length());
+                        if (start != -1) {
+                            fullText.delete(start, start + lastPartial.length());
+                        }
                     }
-                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') fullText.append(" ");
+                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
+                        fullText.append(" ");
+                    }
                     fullText.append(partial);
                     lastPartial = partial;
+
+                    if (hasReceivedFinalText) {
+                        hasReceivedFinalText = false;
+                        startLongTimeout();
+                    } else {
+                        startLongTimeout();
+                    }
                 }
-                if (!partial.isEmpty()) {
-                    startTimeoutTimer(config.getTimeoutShort());
-                }
-            } else if (obj.has("text")) {
-                String text = obj.getString("text");
-                if (text.isEmpty()) return;
-                if (!lastPartial.isEmpty()) {
-                    int start = fullText.lastIndexOf(lastPartial);
-                    if (start != -1) fullText.replace(start, start + lastPartial.length(), text);
-                    lastPartial = "";
-                } else {
-                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') fullText.append(" ");
-                    fullText.append(text);
-                }
-                startTimeoutTimer(config.getTimeoutShort());
             }
+
+            if (hasText) {
+                String text = obj.getString("text");
+                if (!text.isEmpty()) {
+                    if (!lastPartial.isEmpty()) {
+                        int start = fullText.lastIndexOf(lastPartial);
+                        if (start != -1) {
+                            fullText.replace(start, start + lastPartial.length(), text);
+                        }
+                        lastPartial = "";
+                    } else {
+                        if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
+                            fullText.append(" ");
+                        }
+                        fullText.append(text);
+                    }
+
+                    hasReceivedFinalText = true;
+                    startShortTimeout();
+                }
+            }
+
             onResultCallback.accept(fullText.toString().trim());
         } catch (Exception e) {
             e.printStackTrace();
