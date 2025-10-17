@@ -36,7 +36,6 @@ public class VoiceService extends Service {
     private VoiceProcessor voiceProcessor;
     private boolean isListening = false;
     private boolean launchedFromVoiceActivity = false;
-    private boolean isInitialized = false;
 
     @Override
     public void onCreate() {
@@ -66,8 +65,7 @@ public class VoiceService extends Service {
         if ("org.verba.VOICE".equals(intent.getAction())) {
             launchedFromVoiceActivity = intent.getBooleanExtra("from_voice_activity", false);
             loadSettings();
-            if (!isListening && voiceProcessor != null && !isInitialized) {
-                isInitialized = true;
+            if (!isListening && voiceProcessor != null) {
                 voiceProcessor.startListening();
                 isListening = true;
             }
