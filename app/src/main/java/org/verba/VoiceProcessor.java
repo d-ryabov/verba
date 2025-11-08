@@ -8,13 +8,10 @@ import android.media.SoundPool;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
-
 import org.json.JSONObject;
 import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
-
-import java.io.IOException;
 import java.util.function.Consumer;
 
 public class VoiceProcessor implements RecognitionListener {
@@ -24,20 +21,17 @@ public class VoiceProcessor implements RecognitionListener {
     private final Consumer<String> onErrorCallback;
     private final Runnable onVoiceStartCallback;
     private final Runnable onVoiceStopCallback;
-
     private SpeechService speechService;
     private AudioManager audioManager;
     private SoundPool soundPool;
     private int startSoundId, stopSoundId;
-    private Handler handler = new Handler();
+    private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
     private boolean isReduced = false;
     private int originalVolume;
-
-    private static final long TIMEOUT_LONG = 3000;
-    private static final long TIMEOUT_SHORT = 300;
+    private boolean hasReceivedFinalText = false;
 
     public VoiceProcessor(Context context, VoiceConfig config, Consumer<String> onResult, Consumer<String> onError, Runnable onStart, Runnable onStop) {
         this.context = context;
@@ -55,18 +49,17 @@ public class VoiceProcessor implements RecognitionListener {
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
-
         soundPool = new SoundPool.Builder()
                 .setMaxStreams(2)
                 .setAudioAttributes(audioAttributes)
                 .build();
-
         startSoundId = soundPool.load(context, R.raw.mic_on, 1);
         stopSoundId = soundPool.load(context, R.raw.mic_off, 1);
     }
 
     public void startListening() {
         resetRecognitionState();
+        hasReceivedFinalText = false;
         onVoiceStartCallback.run();
         try {
             Recognizer rec = new Recognizer(ModelManager.getModel(), 16000.0f);
@@ -74,7 +67,7 @@ public class VoiceProcessor implements RecognitionListener {
             speechService.startListening(this);
             playStartSound();
             reduceVolume();
-            startTimeoutTimer(TIMEOUT_LONG);
+            startLongTimeout();
         } catch (Exception e) {
             onErrorCallback.accept("Failed to start listening: " + e.getMessage());
         }
@@ -95,16 +88,20 @@ public class VoiceProcessor implements RecognitionListener {
         onVoiceStopCallback.run();
     }
 
-    private void startTimeoutTimer(long timeout) {
+    private void startLongTimeout() {
+        scheduleTimeout(config.getTimeoutLong());
+    }
+
+    private void startShortTimeout() {
+        scheduleTimeout(config.getTimeoutShort());
+    }
+
+    private void scheduleTimeout(long delayMs) {
         if (timeoutRunnable != null) {
             handler.removeCallbacks(timeoutRunnable);
         }
-
-        timeoutRunnable = () -> {
-            stopListening();
-        };
-
-        handler.postDelayed(timeoutRunnable, timeout);
+        timeoutRunnable = this::stopListening;
+        handler.postDelayed(timeoutRunnable, delayMs);
     }
 
     private void reduceVolume() {
@@ -176,35 +173,54 @@ public class VoiceProcessor implements RecognitionListener {
     private void handleVoskResult(String jsonStr) {
         try {
             JSONObject obj = new JSONObject(jsonStr);
+            boolean hasPartial = obj.has("partial");
+            boolean hasText = obj.has("text");
 
-            if (obj.has("partial")) {
+            if (hasPartial) {
                 String partial = obj.getString("partial");
                 if (!partial.isEmpty() && !partial.equals(lastPartial)) {
                     if (!lastPartial.isEmpty()) {
                         int start = fullText.lastIndexOf(lastPartial);
-                        if (start != -1) fullText.delete(start, start + lastPartial.length());
+                        if (start != -1) {
+                            fullText.delete(start, start + lastPartial.length());
+                        }
                     }
-                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') fullText.append(" ");
+                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
+                        fullText.append(" ");
+                    }
                     fullText.append(partial);
                     lastPartial = partial;
-                }
-                if (!partial.isEmpty()) {
-                    startTimeoutTimer(TIMEOUT_SHORT);
-                }
-            } else if (obj.has("text")) {
-                String text = obj.getString("text");
-                if (text.isEmpty()) return;
 
-                if (!lastPartial.isEmpty()) {
-                    int start = fullText.lastIndexOf(lastPartial);
-                    if (start != -1) fullText.replace(start, start + lastPartial.length(), text);
-                    lastPartial = "";
-                } else {
-                    if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') fullText.append(" ");
-                    fullText.append(text);
+                    if (hasReceivedFinalText) {
+                        hasReceivedFinalText = false;
+                        startLongTimeout();
+                    } else {
+                        startLongTimeout();
+                    }
                 }
-                startTimeoutTimer(TIMEOUT_SHORT);
             }
+
+            if (hasText) {
+                String text = obj.getString("text");
+                if (!text.isEmpty()) {
+                    if (!lastPartial.isEmpty()) {
+                        int start = fullText.lastIndexOf(lastPartial);
+                        if (start != -1) {
+                            fullText.replace(start, start + lastPartial.length(), text);
+                        }
+                        lastPartial = "";
+                    } else {
+                        if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
+                            fullText.append(" ");
+                        }
+                        fullText.append(text);
+                    }
+
+                    hasReceivedFinalText = true;
+                    startShortTimeout();
+                }
+            }
+
             onResultCallback.accept(fullText.toString().trim());
         } catch (Exception e) {
             e.printStackTrace();
@@ -216,12 +232,10 @@ public class VoiceProcessor implements RecognitionListener {
         intent.setAction(config.getIntentName());
         intent.putExtra(config.getIntentExtraKeyName(), text);
         context.sendBroadcast(intent);
-
         Intent resultIntent = new Intent();
         resultIntent.setAction("org.verba.VOICE_RESULT");
         resultIntent.putExtra("result", text);
         context.sendBroadcast(resultIntent);
-
         if (config.isFromVoiceActivity() && config.isVoiceDebug()) {
             String displayText;
             String appName = context.getString(R.string.app_name);
@@ -230,9 +244,7 @@ public class VoiceProcessor implements RecognitionListener {
             } else {
                 displayText = appName + ": Слышу \"" + text + "\"";
             }
-
             final String finalDisplayText = displayText;
-
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 Toast.makeText(context, finalDisplayText, Toast.LENGTH_LONG).show();
             } else {
