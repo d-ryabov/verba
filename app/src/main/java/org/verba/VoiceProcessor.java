@@ -3,8 +3,10 @@ package org.verba;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.SoundPool;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
@@ -21,17 +23,18 @@ public class VoiceProcessor implements RecognitionListener {
     private final Consumer<String> onErrorCallback;
     private final Runnable onVoiceStartCallback;
     private final Runnable onVoiceStopCallback;
-    private SpeechService speechService;
     private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
     private SoundPool soundPool;
     private int startSoundId, stopSoundId;
-    private Handler handler = new Handler(Looper.getMainLooper());
-    private Runnable timeoutRunnable;
+    private SpeechService speechService;
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
+    private boolean hasReceivedFinalText = false;
     private boolean isReduced = false;
     private int originalVolume;
-    private boolean hasReceivedFinalText = false;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable timeoutRunnable;
 
     public VoiceProcessor(Context context, VoiceConfig config, Consumer<String> onResult, Consumer<String> onError, Runnable onStart, Runnable onStop) {
         this.context = context;
@@ -62,6 +65,7 @@ public class VoiceProcessor implements RecognitionListener {
         hasReceivedFinalText = false;
         onVoiceStartCallback.run();
         try {
+            kickAudioFocus();
             Recognizer rec = new Recognizer(ModelManager.getModel(), 16000.0f);
             speechService = new SpeechService(rec, 16000.0f);
             speechService.startListening(this);
@@ -84,24 +88,38 @@ public class VoiceProcessor implements RecognitionListener {
             speechService = null;
             restoreVolume();
             playStopSound();
+            onVoiceStopCallback.run();
         }
-        onVoiceStopCallback.run();
     }
 
-    private void startLongTimeout() {
-        scheduleTimeout(config.getTimeoutLong());
-    }
-
-    private void startShortTimeout() {
-        scheduleTimeout(config.getTimeoutShort());
-    }
-
-    private void scheduleTimeout(long delayMs) {
-        if (timeoutRunnable != null) {
-            handler.removeCallbacks(timeoutRunnable);
+    public void release() {
+        stopListening();
+        if (soundPool != null) {
+            soundPool.release();
+            soundPool = null;
         }
-        timeoutRunnable = this::stopListening;
-        handler.postDelayed(timeoutRunnable, delayMs);
+    }
+
+    public void resetRecognitionState() {
+        fullText.setLength(0);
+        lastPartial = "";
+    }
+
+    private void kickAudioFocus() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .build();
+
+        audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(audioAttributes)
+                .build();
+
+        audioManager.requestAudioFocus(audioFocusRequest);
+
+        handler.postDelayed(() ->
+                audioManager.abandonAudioFocusRequest(audioFocusRequest), 100);
     }
 
     private void reduceVolume() {
@@ -121,54 +139,36 @@ public class VoiceProcessor implements RecognitionListener {
     }
 
     private void playStartSound() {
-        soundPool.play(startSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
-        handler.postDelayed(() -> {}, 800);
+        if (soundPool != null) {
+            soundPool.play(startSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
+        }
+        handler.postDelayed(() -> {
+        }, 800);
     }
 
     private void playStopSound() {
-        soundPool.play(stopSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
-        handler.postDelayed(() -> {}, 800);
+        if (soundPool != null) {
+            soundPool.play(stopSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
+        }
+        handler.postDelayed(() -> {
+        }, 800);
     }
 
-    public void release() {
-        stopListening();
-        if (soundPool != null) {
-            soundPool.release();
-            soundPool = null;
-        }
-        if (handler != null && timeoutRunnable != null) {
+    private void startLongTimeout() {
+        scheduleTimeout(config.getTimeoutLong());
+    }
+
+    private void startShortTimeout() {
+        scheduleTimeout(config.getTimeoutShort());
+    }
+
+    private void scheduleTimeout(long delayMs) {
+        if (timeoutRunnable != null) {
             handler.removeCallbacks(timeoutRunnable);
         }
+        timeoutRunnable = this::stopListening;
+        handler.postDelayed(timeoutRunnable, delayMs);
     }
-
-    public void resetRecognitionState() {
-        fullText.setLength(0);
-        lastPartial = "";
-    }
-
-    @Override
-    public void onResult(String hypothesis) {
-        handleVoskResult(hypothesis);
-    }
-
-    @Override
-    public void onFinalResult(String hypothesis) {
-        handleVoskResult(hypothesis);
-        sendRecognizedText(fullText.toString().trim());
-    }
-
-    @Override
-    public void onPartialResult(String hypothesis) {
-        handleVoskResult(hypothesis);
-    }
-
-    @Override
-    public void onError(Exception e) {
-        onErrorCallback.accept(e.getMessage());
-    }
-
-    @Override
-    public void onTimeout() {}
 
     private void handleVoskResult(String jsonStr) {
         try {
@@ -253,5 +253,30 @@ public class VoiceProcessor implements RecognitionListener {
                 );
             }
         }
+    }
+
+    @Override
+    public void onPartialResult(String hypothesis) {
+        handleVoskResult(hypothesis);
+    }
+
+    @Override
+    public void onResult(String hypothesis) {
+        handleVoskResult(hypothesis);
+    }
+
+    @Override
+    public void onFinalResult(String hypothesis) {
+        handleVoskResult(hypothesis);
+        sendRecognizedText(fullText.toString().trim());
+    }
+
+    @Override
+    public void onError(Exception e) {
+        onErrorCallback.accept(e.getMessage());
+    }
+
+    @Override
+    public void onTimeout() {
     }
 }
