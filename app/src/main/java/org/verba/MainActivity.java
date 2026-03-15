@@ -93,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
         setupListeners();
         TextView tvCopyright = findViewById(R.id.tvCopyright);
         String appName = getString(R.string.app_name);
-        tvCopyright.setText("© 2025 " + appName + "\nРазработано с использованием vosk\nТолько для некоммерческого использования");
+        tvCopyright.setText("© 2026 " + appName + "\nРазработано с использованием vosk\nТолько для некоммерческого использования");
         statusText.setText(R.string.preparing);
         LibVosk.setLogLevel(LogLevel.INFO);
         int permissionCheck = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO);
