@@ -23,7 +23,7 @@ public class VoiceProcessor implements RecognitionListener {
     private final Consumer<String> onErrorCallback;
     private final Runnable onVoiceStartCallback;
     private final Runnable onVoiceStopCallback;
-    private AudioManager audioManager;
+    private final AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private SoundPool soundPool;
     private int startSoundId, stopSoundId;
@@ -37,7 +37,7 @@ public class VoiceProcessor implements RecognitionListener {
     private Runnable timeoutRunnable;
 
     public VoiceProcessor(Context context, VoiceConfig config, Consumer<String> onResult, Consumer<String> onError, Runnable onStart, Runnable onStop) {
-        this.context = context;
+        this.context = context.getApplicationContext();
         this.config = config;
         this.onResultCallback = onResult;
         this.onErrorCallback = onError;
@@ -61,6 +61,9 @@ public class VoiceProcessor implements RecognitionListener {
     }
 
     public void startListening() {
+        if (speechService != null) {
+            stopListening();
+        }
         resetRecognitionState();
         hasReceivedFinalText = false;
         onVoiceStartCallback.run();
@@ -73,6 +76,9 @@ public class VoiceProcessor implements RecognitionListener {
             reduceVolume();
             startLongTimeout();
         } catch (Exception e) {
+            releaseAudioFocus();
+            restoreVolume();
+            onVoiceStopCallback.run();
             onErrorCallback.accept("Failed to start listening: " + e.getMessage());
         }
     }
@@ -106,8 +112,12 @@ public class VoiceProcessor implements RecognitionListener {
         lastPartial = "";
     }
 
-    private AudioManager.OnAudioFocusChangeListener focusChangeListener =
-            focusChange -> { };
+    private final AudioManager.OnAudioFocusChangeListener focusChangeListener = focusChange -> {
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            handler.post(this::stopListening);
+        }
+    };
 
     private void kickAudioFocus() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -160,6 +170,8 @@ public class VoiceProcessor implements RecognitionListener {
         if (soundPool != null) {
             soundPool.play(startSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
         }
+        // Intentional delay: keeps the handler queue busy so the sound
+        // has time to play before any subsequent audio focus changes.
         handler.postDelayed(() -> {
         }, 800);
     }
@@ -168,6 +180,8 @@ public class VoiceProcessor implements RecognitionListener {
         if (soundPool != null) {
             soundPool.play(stopSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
         }
+        // Intentional delay: keeps the handler queue busy so the sound
+        // has time to play before any subsequent audio focus changes.
         handler.postDelayed(() -> {
         }, 800);
     }
@@ -211,10 +225,8 @@ public class VoiceProcessor implements RecognitionListener {
 
                     if (hasReceivedFinalText) {
                         hasReceivedFinalText = false;
-                        startLongTimeout();
-                    } else {
-                        startLongTimeout();
                     }
+                    startLongTimeout();
                 }
             }
 
@@ -241,7 +253,9 @@ public class VoiceProcessor implements RecognitionListener {
 
             onResultCallback.accept(fullText.toString().trim());
         } catch (Exception e) {
-            e.printStackTrace();
+            handler.post(() -> {
+                onErrorCallback.accept("Result parse error: " + e.getMessage());
+            });
         }
     }
 
@@ -287,14 +301,29 @@ public class VoiceProcessor implements RecognitionListener {
     public void onFinalResult(String hypothesis) {
         handleVoskResult(hypothesis);
         sendRecognizedText(fullText.toString().trim());
+        handler.post(this::stopListening);
     }
 
     @Override
     public void onError(Exception e) {
-        onErrorCallback.accept(e.getMessage());
+        handler.post(() -> {
+            if (timeoutRunnable != null) {
+                handler.removeCallbacks(timeoutRunnable);
+                timeoutRunnable = null;
+            }
+            if (speechService != null) {
+                try { speechService.shutdown(); } catch (Exception ignored) {}
+                speechService = null;
+            }
+            releaseAudioFocus();
+            restoreVolume();
+            onVoiceStopCallback.run();
+            onErrorCallback.accept(e.getMessage());
+        });
     }
 
     @Override
     public void onTimeout() {
+        handler.post(this::stopListening);
     }
 }
