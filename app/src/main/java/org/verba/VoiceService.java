@@ -52,6 +52,7 @@ public class VoiceService extends Service {
         super.onCreate();
         LibVosk.setLogLevel(LogLevel.INFO);
         sharedPref = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+        loadSettings();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
@@ -122,7 +123,9 @@ public class VoiceService extends Service {
                                 config,
                                 result -> {
                                 },
-                                error -> stopSelf(),
+                                error -> {
+                                    isListening = false;
+                                },
                                 this::notifyVoiceStarted,
                                 this::notifyVoiceStopped
                         );
