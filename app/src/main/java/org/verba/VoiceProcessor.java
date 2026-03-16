@@ -86,6 +86,7 @@ public class VoiceProcessor implements RecognitionListener {
             speechService.stop();
             speechService.shutdown();
             speechService = null;
+            releaseAudioFocus();
             restoreVolume();
             playStopSound();
             onVoiceStopCallback.run();
@@ -105,21 +106,38 @@ public class VoiceProcessor implements RecognitionListener {
         lastPartial = "";
     }
 
+    private AudioManager.OnAudioFocusChangeListener focusChangeListener =
+            focusChange -> { };
+
     private void kickAudioFocus() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .build();
+            audioFocusRequest = new AudioFocusRequest.Builder(
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(audioAttributes)
+                    .setOnAudioFocusChangeListener(focusChangeListener)
+                    .setWillPauseWhenDucked(false)
+                    .build();
+            audioManager.requestAudioFocus(audioFocusRequest);
+        } else {
+            audioManager.requestAudioFocus(
+                    focusChangeListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+        }
+    }
 
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                .build();
-
-        audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
-                .setAudioAttributes(audioAttributes)
-                .build();
-
-        audioManager.requestAudioFocus(audioFocusRequest);
-
-        handler.postDelayed(() ->
-                audioManager.abandonAudioFocusRequest(audioFocusRequest), 100);
+    private void releaseAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioFocusRequest != null) {
+                audioManager.abandonAudioFocusRequest(audioFocusRequest);
+                audioFocusRequest = null;
+            }
+        } else {
+            audioManager.abandonAudioFocus(focusChangeListener);
+        }
     }
 
     private void reduceVolume() {
