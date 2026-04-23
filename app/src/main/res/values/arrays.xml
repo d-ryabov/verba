@@ -5,4 +5,10 @@
         <item>Светлая</item>
         <item>Тёмная</item>
     </string-array>
+    <string-array name="audio_stream_options">
+        <item>Звуки интерфейса</item>
+        <item>Уведомления</item>
+        <item>Медиа</item>
+    </string-array>
+
 </resources>
