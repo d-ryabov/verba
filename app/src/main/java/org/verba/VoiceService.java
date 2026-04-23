@@ -138,7 +138,7 @@ public class VoiceService extends Service {
         if (isListening || !isModelReady) return;
 
         if (voiceProcessor != null) voiceProcessor.release();
-        boolean overlayEnabled = sharedPref.getBoolean("voice_debug", false);
+        boolean overlayEnabled = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
         voiceProcessor = new VoiceProcessor(this,
                 config,
                 overlayEnabled,
