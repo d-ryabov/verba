@@ -24,7 +24,6 @@ public class VoiceProcessor implements RecognitionListener {
     private final Runnable onVoiceStartCallback;
     private final Runnable onVoiceStopCallback;
     private final AudioManager audioManager;
-    private AudioFocusRequest audioFocusRequest;
     private SoundPool soundPool;
     private int startSoundId, stopSoundId;
     private SpeechService speechService;
@@ -68,7 +67,6 @@ public class VoiceProcessor implements RecognitionListener {
         hasReceivedFinalText = false;
         onVoiceStartCallback.run();
         try {
-            kickAudioFocus();
             Recognizer rec = new Recognizer(ModelManager.getModel(), 16000.0f);
             speechService = new SpeechService(rec, 16000.0f);
             speechService.startListening(this);
@@ -76,7 +74,6 @@ public class VoiceProcessor implements RecognitionListener {
             reduceVolume();
             startLongTimeout();
         } catch (Exception e) {
-            releaseAudioFocus();
             restoreVolume();
             onVoiceStopCallback.run();
             onErrorCallback.accept("Failed to start listening: " + e.getMessage());
@@ -92,7 +89,6 @@ public class VoiceProcessor implements RecognitionListener {
             speechService.stop();
             speechService.shutdown();
             speechService = null;
-            releaseAudioFocus();
             restoreVolume();
             playStopSound();
             onVoiceStopCallback.run();
@@ -110,44 +106,6 @@ public class VoiceProcessor implements RecognitionListener {
     public void resetRecognitionState() {
         fullText.setLength(0);
         lastPartial = "";
-    }
-
-    private final AudioManager.OnAudioFocusChangeListener focusChangeListener = focusChange -> {
-        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
-                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-            handler.post(this::stopListening);
-        }
-    };
-
-    private void kickAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .build();
-            audioFocusRequest = new AudioFocusRequest.Builder(
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                    .setAudioAttributes(audioAttributes)
-                    .setOnAudioFocusChangeListener(focusChangeListener)
-                    .setWillPauseWhenDucked(false)
-                    .build();
-            audioManager.requestAudioFocus(audioFocusRequest);
-        } else {
-            audioManager.requestAudioFocus(
-                    focusChangeListener,
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
-        }
-    }
-
-    private void releaseAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (audioFocusRequest != null) {
-                audioManager.abandonAudioFocusRequest(audioFocusRequest);
-                audioFocusRequest = null;
-            }
-        } else {
-            audioManager.abandonAudioFocus(focusChangeListener);
-        }
     }
 
     private void reduceVolume() {
@@ -315,7 +273,6 @@ public class VoiceProcessor implements RecognitionListener {
                 try { speechService.shutdown(); } catch (Exception ignored) {}
                 speechService = null;
             }
-            releaseAudioFocus();
             restoreVolume();
             onVoiceStopCallback.run();
             onErrorCallback.accept(e.getMessage());
