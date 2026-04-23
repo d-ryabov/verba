@@ -18,6 +18,7 @@ import android.view.animation.AnimationUtils;
 import android.widget.AdapterView;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -41,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_VOICE_DEBUG = "voice_debug";
     private static final String KEY_TIMEOUT_LONG = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
+    private static final String KEY_AUDIO_STREAM = "audio_stream";
     private static final long DEFAULT_TIMEOUT_LONG = 3200L;
     private static final long DEFAULT_TIMEOUT_SHORT = 400L;
     private static final int PERMISSIONS_REQUEST_RECORD_AUDIO = 1;
@@ -53,7 +55,8 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton micButton;
     private TextView tvVolumeValue, statusText;
     private TextInputEditText etResult, etIntentName, etTextKey, etTimeoutLong, etTimeoutShort;
-    private android.widget.Spinner spinnerTheme;
+    private Spinner spinnerTheme;
+    private Spinner spinnerAudioStream;
     private Slider sliderVolume;
     private CheckBox cbDebugVoiceInput;
     private boolean isRecording = false;
@@ -61,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
     private Animation pulseAnimation;
     private VoiceProcessor voiceProcessor;
 
-    private BroadcastReceiver voiceStateReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver voiceStateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -114,25 +117,26 @@ public class MainActivity extends AppCompatActivity {
         int mode;
         switch (theme) {
             case "light": mode = AppCompatDelegate.MODE_NIGHT_NO; break;
-            case "dark": mode = AppCompatDelegate.MODE_NIGHT_YES; break;
-            default: mode = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
+            case "dark":  mode = AppCompatDelegate.MODE_NIGHT_YES; break;
+            default:      mode = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
         }
         AppCompatDelegate.setDefaultNightMode(mode);
     }
 
     private void initViews() {
-        micButton = findViewById(R.id.btnMicrophone);
-        statusText = findViewById(R.id.tvStatus);
-        etResult = findViewById(R.id.etResult);
-        etIntentName = findViewById(R.id.etIntentName);
-        etTextKey = findViewById(R.id.etTextKey);
-        etTimeoutLong = findViewById(R.id.etTimeoutLong);
-        etTimeoutShort = findViewById(R.id.etTimeoutShort);
-        spinnerTheme = findViewById(R.id.spinnerTheme);
-        sliderVolume = findViewById(R.id.sliderVolume);
-        tvVolumeValue = findViewById(R.id.tvVolumeValue);
+        micButton        = findViewById(R.id.btnMicrophone);
+        statusText       = findViewById(R.id.tvStatus);
+        etResult         = findViewById(R.id.etResult);
+        etIntentName     = findViewById(R.id.etIntentName);
+        etTextKey        = findViewById(R.id.etTextKey);
+        etTimeoutLong    = findViewById(R.id.etTimeoutLong);
+        etTimeoutShort   = findViewById(R.id.etTimeoutShort);
+        spinnerTheme      = findViewById(R.id.spinnerTheme);
+        spinnerAudioStream = findViewById(R.id.spinnerAudioStream);
+        sliderVolume      = findViewById(R.id.sliderVolume);
+        tvVolumeValue     = findViewById(R.id.tvVolumeValue);
         cbDebugVoiceInput = findViewById(R.id.cbDebugVoiceInput);
-        pulseAnimation = AnimationUtils.loadAnimation(this, R.anim.pulse_animation);
+        pulseAnimation    = AnimationUtils.loadAnimation(this, R.anim.pulse_animation);
         micButton.setOnClickListener(v -> {
             if (isRecording) {
                 stopListening();
@@ -158,6 +162,24 @@ public class MainActivity extends AppCompatActivity {
                     sharedPref.edit().putString(KEY_THEME, themeValue).apply();
                     recreate();
                 }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        spinnerAudioStream.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (isSpinnerSettingProgrammatically) return;
+                String[] keys = {"sonification", "notification", "media"};
+                String value = keys[position];
+                sharedPref.edit().putString(KEY_AUDIO_STREAM, value).apply();
+                if (voiceProcessor != null) {
+                    voiceProcessor.release();
+                    voiceProcessor = null;
+                }
+                saveSettings();
             }
 
             @Override
@@ -231,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
         String textKey = sharedPref.getString(KEY_TEXT_KEY, keyDefault);
         etTextKey.setText(textKey);
 
-        long timeoutLong = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
+        long timeoutLong  = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
         long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
         etTimeoutLong.setText(String.valueOf(timeoutLong));
         etTimeoutShort.setText(String.valueOf(timeoutShort));
@@ -239,18 +261,28 @@ public class MainActivity extends AppCompatActivity {
         boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
         cbDebugVoiceInput.setChecked(debugVoiceInput);
 
-        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort);
+        String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
+        int audioStreamSelection = 0;
+        if ("notification".equals(audioStream)) audioStreamSelection = 1;
+        else if ("media".equals(audioStream))   audioStreamSelection = 2;
+        isSpinnerSettingProgrammatically = true;
+        spinnerAudioStream.setSelection(audioStreamSelection);
+        isSpinnerSettingProgrammatically = false;
+
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort, audioStream);
     }
 
     private void saveSettings() {
         long timeoutLong  = parseLongSafely(etTimeoutLong.getText().toString(), DEFAULT_TIMEOUT_LONG);
         long timeoutShort = parseLongSafely(etTimeoutShort.getText().toString(), DEFAULT_TIMEOUT_SHORT);
+        String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
         config = new VoiceConfig(
                 (int) sliderVolume.getValue(),
                 etIntentName.getText().toString(),
                 etTextKey.getText().toString(),
                 timeoutLong,
-                timeoutShort
+                timeoutShort,
+                audioStream
         );
         sharedPref.edit()
                 .putString(KEY_INTENT_NAME, config.getIntentName())
@@ -259,7 +291,6 @@ public class MainActivity extends AppCompatActivity {
                 .putLong(KEY_TIMEOUT_SHORT, config.getTimeoutShort())
                 .apply();
     }
-
 
     private long parseLongSafely(String input, long defaultValue) {
         try {
@@ -273,15 +304,11 @@ public class MainActivity extends AppCompatActivity {
     private void initModel() {
         ModelManager.loadModel(
                 this,
-                () -> {
-                    runOnUiThread(() -> {
-                        statusText.setText(R.string.ready);
-                        micButton.setEnabled(true);
-                    });
-                },
-                (ex) -> {
-                    runOnUiThread(() -> setErrorState("Failed to load model: " + ex.getMessage()));
-                }
+                () -> runOnUiThread(() -> {
+                    statusText.setText(R.string.ready);
+                    micButton.setEnabled(true);
+                }),
+                (ex) -> runOnUiThread(() -> setErrorState("Failed to load model: " + ex.getMessage()))
         );
     }
 
@@ -351,7 +378,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if (voiceProcessor != null) {
-            voiceProcessor.stopListening();
             voiceProcessor.release();
             voiceProcessor = null;
         }

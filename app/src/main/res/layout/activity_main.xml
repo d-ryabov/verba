@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
     android:padding="16dp"
     android:background="?android:windowBackground">
 
-    <!-- Левая панель: фиксированная -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -65,7 +63,6 @@
         android:layout_height="match_parent"
         android:background="?android:attr/listDivider" />
 
-    <!-- Правая панель: ОБЁРНУТА В ScrollView -->
     <ScrollView
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -87,12 +84,13 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
+            <!-- Внешний вид -->
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Тема:"
-                android:textSize="18sp"
-                android:layout_marginTop="8dp" />
+                android:textSize="18sp" />
 
             <Spinner
                 android:id="@+id/spinnerTheme"
@@ -103,12 +101,14 @@
                 android:textSize="21sp"
                 android:layout_marginBottom="12dp" />
 
+            <!-- Громкость -->
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Приглушить громкость:"
                 android:textSize="18sp"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="4dp" />
 
             <com.google.android.material.slider.Slider
                 android:id="@+id/sliderVolume"
@@ -126,69 +126,27 @@
                 android:gravity="center"
                 android:textSize="21sp"
                 android:textStyle="bold"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="2dp"
                 android:layout_marginBottom="12dp" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            <!-- Канал звука -->
+
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Имя интента"
-                android:layout_marginBottom="12dp">
+                android:text="Канал звука:"
+                android:textSize="18sp" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etIntentName"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="18sp"
-                    android:inputType="text" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            <Spinner
+                android:id="@+id/spinnerAudioStream"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Ключ для передачи текста"
-                android:layout_marginBottom="12dp">
+                android:layout_height="48dp"
+                android:entries="@array/audio_stream_options"
+                android:layout_marginTop="4dp"
+                android:textSize="21sp"
+                android:layout_marginBottom="12dp" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etTextKey"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="18sp"
-                    android:inputType="text" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Таймаут бездействия (мсек)"
-                android:layout_marginBottom="12dp">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etTimeoutLong"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:textSize="18sp" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Таймаут распознания (мсек)"
-                android:layout_marginBottom="12dp">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etTimeoutShort"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:textSize="18sp" />
-            </com.google.android.material.textfield.TextInputLayout>
+            <!-- Уведомления -->
 
             <CheckBox
                 android:id="@+id/cbDebugVoiceInput"
@@ -196,7 +154,109 @@
                 android:layout_height="wrap_content"
                 android:text="Уведомлять о распознанном тексте"
                 android:textSize="18sp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Расширенные настройки — редко меняются -->
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
                 android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Дополнительно"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Таймауты в одну строку -->
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Таймаут распознания">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etTimeoutShort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:textSize="18sp" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Таймаут бездействия"
+                    android:layout_marginEnd="8dp">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etTimeoutLong"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:textSize="18sp" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+
+            <!-- Интент и ключ в одну строку -->
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:hint="Имя интента"
+                    android:layout_marginEnd="8dp">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etIntentName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="18sp"
+                        android:inputType="text" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Ключ">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etTextKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="18sp"
+                        android:inputType="text" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvCopyright"
@@ -207,7 +267,7 @@
                 android:textColor="?android:textColorSecondary"
                 android:gravity="center"
                 android:lineSpacingExtra="4dp"
-                android:layout_marginTop="16dp" />
+                android:layout_marginTop="4dp" />
 
         </LinearLayout>
 

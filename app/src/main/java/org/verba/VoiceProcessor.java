@@ -169,10 +169,33 @@ public class VoiceProcessor implements RecognitionListener {
         handler.postDelayed(overlayHideRunnable, config.getTimeoutLong());
     }
 
+    private int getAudioStream() {
+        switch (config.getAudioStreamType()) {
+            case "notification": return AudioManager.STREAM_NOTIFICATION;
+            case "media":        return AudioManager.STREAM_MUSIC;
+            default:             return AudioManager.STREAM_MUSIC;
+        }
+    }
+
     private void initSoundPool() {
+        int usage, contentType;
+        switch (config.getAudioStreamType()) {
+            case "notification":
+                usage       = AudioAttributes.USAGE_NOTIFICATION;
+                contentType = AudioAttributes.CONTENT_TYPE_SONIFICATION;
+                break;
+            case "media":
+                usage       = AudioAttributes.USAGE_MEDIA;
+                contentType = AudioAttributes.CONTENT_TYPE_MUSIC;
+                break;
+            default:
+                usage       = AudioAttributes.USAGE_ASSISTANCE_SONIFICATION;
+                contentType = AudioAttributes.CONTENT_TYPE_SONIFICATION;
+                break;
+        }
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(usage)
+                .setContentType(contentType)
                 .build();
         soundPool = new SoundPool.Builder()
                 .setMaxStreams(2)
@@ -184,30 +207,28 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void reduceVolume() {
         if (!isReduced) {
-            originalVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int stream = getAudioStream();
+            originalVolume = audioManager.getStreamVolume(stream);
             int newVolume = Math.max(0, originalVolume * (100 - config.getVolumeReduceLevel()) / 100);
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0);
+            audioManager.setStreamVolume(stream, newVolume, 0);
             isReduced = true;
         }
     }
 
     private void restoreVolume() {
         if (isReduced) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0);
+            audioManager.setStreamVolume(getAudioStream(), originalVolume, 0);
             isReduced = false;
         }
     }
 
     private void playStartSound() {
         if (soundPool != null) soundPool.play(startSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
-        // Intentional: keeps the Handler queue occupied so the sound has time
-        // to play before any subsequent audio focus change takes effect.
         handler.postDelayed(() -> {}, 800);
     }
 
     private void playStopSound() {
         if (soundPool != null) soundPool.play(stopSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
-        // Intentional: same reason as in playStartSound().
         handler.postDelayed(() -> {}, 800);
     }
 
@@ -292,10 +313,8 @@ public class VoiceProcessor implements RecognitionListener {
             if (overlay != null) overlay.stopPulse();
             sendRecognizedText(finalText);
             scheduleOverlayHide();
+            handler.post(this::stopListening);
         }
-
-        if (finalText.isEmpty() && !hasReceivedFinalText) return;
-        handler.post(this::stopListening);
     }
 
     @Override

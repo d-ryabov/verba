@@ -32,6 +32,8 @@ public class VoiceService extends Service {
     private static final String KEY_VOICE_DEBUG   = "voice_debug";
     private static final String KEY_TIMEOUT_LONG  = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
+    private static final String KEY_AUDIO_STREAM = "audio_stream";
+
 
     private static final int    DEFAULT_VOLUME_LEVEL  = 60;
     private static final String DEFAULT_INTENT_NAME   = "com.dusiassistant.INPUT";
@@ -52,13 +54,15 @@ public class VoiceService extends Service {
     private boolean pendingStart = false;
 
     private void loadSettings() {
-        int volumeLevel     = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
-        String intentName   = sharedPref.getString(KEY_INTENT_NAME, DEFAULT_INTENT_NAME);
-        String textKey      = sharedPref.getString(KEY_TEXT_KEY, DEFAULT_TEXT_KEY);
-        long timeoutLong    = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
-        long timeoutShort   = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
-        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort);
+        int volumeLevel   = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
+        String intentName = sharedPref.getString(KEY_INTENT_NAME, DEFAULT_INTENT_NAME);
+        String textKey    = sharedPref.getString(KEY_TEXT_KEY, DEFAULT_TEXT_KEY);
+        long timeoutLong  = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
+        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
+        String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort, audioStream);
     }
+
 
     @Override
     public void onCreate() {
