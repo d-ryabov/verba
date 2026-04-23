@@ -297,6 +297,7 @@ public class MainActivity extends AppCompatActivity {
             voiceProcessor = new VoiceProcessor(
                     this,
                     config,
+                    false,
                     result -> runOnUiThread(() -> etResult.setText(result)),
                     error -> runOnUiThread(() -> setErrorState(error)),
                     () -> runOnUiThread(() -> {

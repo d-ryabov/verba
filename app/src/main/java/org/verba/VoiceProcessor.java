@@ -7,6 +7,7 @@ import android.media.AudioManager;
 import android.media.SoundPool;
 import android.os.Handler;
 import android.os.Looper;
+
 import org.json.JSONObject;
 import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
@@ -22,9 +23,15 @@ public class VoiceProcessor implements RecognitionListener {
     private final Runnable onVoiceStartCallback;
     private final Runnable onVoiceStopCallback;
     private final AudioManager audioManager;
+    private final boolean overlayEnabled;
+
     private SoundPool soundPool;
-    private int startSoundId, stopSoundId;
+    private int startSoundId;
+    private int stopSoundId;
+
     private SpeechService speechService;
+    private VoiceRecognitionOverlay overlay;
+
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
     private boolean hasReceivedFinalText = false;
@@ -37,13 +44,13 @@ public class VoiceProcessor implements RecognitionListener {
     private Runnable timeoutRunnable;
     private Runnable overlayHideRunnable;
 
-    private VoiceRecognitionOverlay overlay;
-
     public VoiceProcessor(Context context, VoiceConfig config,
+                          boolean overlayEnabled,
                           Consumer<String> onResult, Consumer<String> onError,
                           Runnable onStart, Runnable onStop) {
         this.context = context.getApplicationContext();
         this.config = config;
+        this.overlayEnabled = overlayEnabled;
         this.onResultCallback = onResult;
         this.onErrorCallback = onError;
         this.onVoiceStartCallback = onStart;
@@ -66,10 +73,12 @@ public class VoiceProcessor implements RecognitionListener {
             reduceVolume();
             startLongTimeout();
 
-            if (overlay != null) overlay.release();
-            overlay = new VoiceRecognitionOverlay(context);
-            overlay.init();
-            overlay.showOverlay("Слушаю...");
+            if (overlayEnabled) {
+                if (overlay != null) overlay.release();
+                overlay = new VoiceRecognitionOverlay(context);
+                overlay.init();
+                overlay.showOverlay("Слушаю...");
+            }
         } catch (Exception e) {
             restoreVolume();
             onVoiceStopCallback.run();
@@ -108,6 +117,7 @@ public class VoiceProcessor implements RecognitionListener {
         lastPartial = "";
         hasReceivedFinalText = false;
         hasReceivedAnyInput = false;
+        cancelOverlayHide();
     }
 
     private void cancelTimeout() {
@@ -115,22 +125,6 @@ public class VoiceProcessor implements RecognitionListener {
             handler.removeCallbacks(timeoutRunnable);
             timeoutRunnable = null;
         }
-    }
-
-    private void cancelOverlayHide() {
-        if (overlayHideRunnable != null) {
-            handler.removeCallbacks(overlayHideRunnable);
-            overlayHideRunnable = null;
-        }
-    }
-
-    private void scheduleOverlayHide() {
-        cancelOverlayHide();
-        overlayHideRunnable = () -> {
-            if (overlay != null) overlay.hideOverlay();
-            overlayHideRunnable = null;
-        };
-        handler.postDelayed(overlayHideRunnable, config.getTimeoutLong());
     }
 
     private void startLongTimeout() {
@@ -149,11 +143,30 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void onInternalTimeout() {
         timeoutRunnable = null;
-        if (!hasReceivedAnyInput && overlay != null) {
-            overlay.showOverlay("Команда не распознана");
+        if (overlay != null) {
+            overlay.stopPulse();
+            if (!hasReceivedAnyInput) {
+                overlay.showOverlay("Команда не распознана");
+            }
             scheduleOverlayHide();
         }
         stopListening();
+    }
+
+    private void cancelOverlayHide() {
+        if (overlayHideRunnable != null) {
+            handler.removeCallbacks(overlayHideRunnable);
+            overlayHideRunnable = null;
+        }
+    }
+
+    private void scheduleOverlayHide() {
+        cancelOverlayHide();
+        overlayHideRunnable = () -> {
+            if (overlay != null) overlay.hideOverlay();
+            overlayHideRunnable = null;
+        };
+        handler.postDelayed(overlayHideRunnable, config.getTimeoutLong());
     }
 
     private void initSoundPool() {
@@ -166,7 +179,7 @@ public class VoiceProcessor implements RecognitionListener {
                 .setAudioAttributes(audioAttributes)
                 .build();
         startSoundId = soundPool.load(context, R.raw.mic_on, 1);
-        stopSoundId = soundPool.load(context, R.raw.mic_off, 1);
+        stopSoundId  = soundPool.load(context, R.raw.mic_off, 1);
     }
 
     private void reduceVolume() {
@@ -187,21 +200,22 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void playStartSound() {
         if (soundPool != null) soundPool.play(startSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
+        // Intentional: keeps the Handler queue occupied so the sound has time
+        // to play before any subsequent audio focus change takes effect.
         handler.postDelayed(() -> {}, 800);
     }
 
     private void playStopSound() {
         if (soundPool != null) soundPool.play(stopSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
+        // Intentional: same reason as in playStartSound().
         handler.postDelayed(() -> {}, 800);
     }
 
     private void handleVoskResult(String jsonStr) {
         try {
             JSONObject obj = new JSONObject(jsonStr);
-            boolean hasPartial = obj.has("partial");
-            boolean hasText = obj.has("text");
 
-            if (hasPartial) {
+            if (obj.has("partial")) {
                 String partial = obj.getString("partial");
                 if (!partial.isEmpty() && !partial.equals(lastPartial)) {
                     if (!lastPartial.isEmpty()) {
@@ -214,13 +228,12 @@ public class VoiceProcessor implements RecognitionListener {
                     fullText.append(partial);
                     lastPartial = partial;
                     hasReceivedAnyInput = true;
-
                     if (hasReceivedFinalText) hasReceivedFinalText = false;
                     startLongTimeout();
                 }
             }
 
-            if (hasText) {
+            if (obj.has("text")) {
                 String text = obj.getString("text");
                 if (!text.isEmpty()) {
                     if (!lastPartial.isEmpty()) {
@@ -243,7 +256,6 @@ public class VoiceProcessor implements RecognitionListener {
             if (overlay != null && !trimmed.isEmpty()) {
                 overlay.showOverlay(trimmed);
             }
-
             if (!trimmed.isEmpty()) {
                 onResultCallback.accept(trimmed);
             }
@@ -277,9 +289,11 @@ public class VoiceProcessor implements RecognitionListener {
         handleVoskResult(hypothesis);
         String finalText = fullText.toString().trim();
         if (!finalText.isEmpty()) {
+            if (overlay != null) overlay.stopPulse();
             sendRecognizedText(finalText);
             scheduleOverlayHide();
         }
+        // Empty final result with no prior input: let timeout handle stop
         if (finalText.isEmpty() && !hasReceivedFinalText) return;
         handler.post(this::stopListening);
     }
@@ -289,6 +303,7 @@ public class VoiceProcessor implements RecognitionListener {
         handler.post(() -> {
             cancelTimeout();
             if (overlay != null) {
+                overlay.stopPulse();
                 overlay.showOverlay("Ошибка распознания");
                 scheduleOverlayHide();
             }

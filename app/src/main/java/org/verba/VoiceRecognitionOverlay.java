@@ -1,15 +1,14 @@
 package org.verba;
 
 import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.Configuration;
-import android.content.res.Resources;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Handler;
-import android.os.Looper;
+import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -18,16 +17,13 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class VoiceRecognitionOverlay {
     private final Context context;
-    private WindowManager windowManager;
-    private View overlayView;
-    private TextView textView;
-    private WindowManager.LayoutParams params;
-    private boolean isShown = false;
     private final boolean animationsEnabled;
 
     private final int overlayWidth;
@@ -35,8 +31,17 @@ public class VoiceRecognitionOverlay {
     private final int maxHeightPx;
     private final int cornerRadiusPx;
     private final int textSizePx;
-    private int surfaceColor;
-    private int textPrimaryColor;
+
+    private final int surfaceColor;
+    private final int textPrimaryColor;
+
+    private WindowManager windowManager;
+    private View overlayView;
+    private TextView textView;
+    private ImageView micIcon;
+    private ValueAnimator hideAnimator;
+
+    private boolean isShown = false;
 
     public VoiceRecognitionOverlay(Context context) {
         this.context = context.getApplicationContext();
@@ -45,15 +50,18 @@ public class VoiceRecognitionOverlay {
         this.animationsEnabled = pm == null || !pm.isPowerSaveMode();
 
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        int screenWidth = metrics.widthPixels;
+        int screenWidth  = metrics.widthPixels;
         int screenHeight = metrics.heightPixels;
-        overlayWidth = (int) (screenWidth * 0.9f);
-        bottomMarginPx = dpToPx(24, metrics);
-        maxHeightPx = (int) (screenHeight * 0.2f);
-        cornerRadiusPx = dpToPx(12, metrics);
-        textSizePx = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 36, metrics);
+        overlayWidth    = (int) (screenWidth * 0.9f);
+        bottomMarginPx  = dpToPx(24, metrics);
+        maxHeightPx     = (int) (screenHeight * 0.2f);
+        cornerRadiusPx  = dpToPx(12, metrics);
+        textSizePx      = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 36, metrics);
 
-        updateColors();
+        boolean isNight = (context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        surfaceColor     = isNight ? 0xFF0C0F14 : 0xFFEAF1F6;
+        textPrimaryColor = isNight ? 0xFFEAF1F6 : 0xFF0C0F14;
     }
 
     public void init() {
@@ -63,25 +71,28 @@ public class VoiceRecognitionOverlay {
         if (windowManager == null) return;
 
         overlayView = createOverlayView();
-        params = createLayoutParams();
-        if (overlayView != null && params != null) {
-            try {
-                windowManager.addView(overlayView, params);
-            } catch (Exception ignored) {}
-        }
+        WindowManager.LayoutParams lp = createLayoutParams();
+        try {
+            windowManager.addView(overlayView, lp);
+        } catch (Exception ignored) {}
     }
 
     public void showOverlay(String text) {
-        if (textView == null || !hasOverlayPermission()) return;
+        if (textView == null || micIcon == null || !hasOverlayPermission()) return;
         text = text.trim();
         if (text.isEmpty()) return;
 
         textView.setText(text);
         textView.setTextColor(textPrimaryColor);
+        micIcon.setColorFilter(textPrimaryColor);
 
         if (!isShown) {
+            cancelHideAnimator();
+            overlayView.setAlpha(1f);
             textView.setVisibility(View.VISIBLE);
+            micIcon.setVisibility(View.VISIBLE);
             fadeIn();
+            startMicPulse();
             isShown = true;
         }
     }
@@ -90,53 +101,68 @@ public class VoiceRecognitionOverlay {
         hideWithAnimation();
     }
 
+    public void stopPulse() {
+        stopMicPulse();
+    }
+
     public void release() {
         isShown = false;
+        cancelHideAnimator();
+        stopMicPulse();
         if (windowManager != null && overlayView != null) {
             if (overlayView.getParent() != null) {
                 try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
             }
         }
-        overlayView = null;
-        textView = null;
+        overlayView   = null;
+        textView      = null;
+        micIcon       = null;
         windowManager = null;
     }
 
-    private void updateColors() {
-        Resources res = context.getResources();
-        boolean isNight = (res.getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-        if (isNight) {
-            surfaceColor = 0xFF0C0F14;
-            textPrimaryColor = 0xFFEAF1F6;
-        } else {
-            surfaceColor = 0xFFEAF1F6;
-            textPrimaryColor = 0xFF0C0F14;
-        }
-    }
-
     private View createOverlayView() {
-        FrameLayout container = new FrameLayout(context);
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.HORIZONTAL);
+        container.setGravity(Gravity.CENTER_VERTICAL);
+        container.setBaselineAligned(false);
         container.setBackground(createRoundedRectDrawable());
         container.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+
+        int iconSize = textSizePx;
+
+        micIcon = new ImageView(context);
+        micIcon.setImageResource(R.drawable.ic_mic_24);
+        micIcon.setColorFilter(textPrimaryColor);
+        micIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        micIcon.setAlpha(0f);
+        micIcon.setVisibility(View.GONE);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(iconSize, iconSize);
+        iconParams.rightMargin = dpToPx(12);
+        iconParams.gravity = Gravity.CENTER_VERTICAL;
+        micIcon.setLayoutParams(iconParams);
 
         textView = new TextView(context);
         textView.setMaxHeight(maxHeightPx);
         textView.setTextColor(textPrimaryColor);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx);
-        //textView.setTypeface(Typeface.MONOSPACE);
         textView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         textView.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         textView.setEllipsize(TextUtils.TruncateAt.END);
-        textView.setMinHeight(dpToPx(48));
         textView.setSingleLine();
+        textView.setIncludeFontPadding(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            textView.setFirstBaselineToTopHeight(0);
+            textView.setLastBaselineToBottomHeight(0);
+        }
         textView.setAlpha(0f);
         textView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        textParams.gravity = Gravity.CENTER_VERTICAL;
+        textView.setLayoutParams(textParams);
 
-        container.addView(textView, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER));
+        container.addView(micIcon);
+        container.addView(textView);
         return container;
     }
 
@@ -164,44 +190,89 @@ public class VoiceRecognitionOverlay {
     }
 
     private void fadeIn() {
-        if (textView == null) return;
+        if (textView == null || micIcon == null) return;
         if (!animationsEnabled) {
             textView.setAlpha(1f);
+            micIcon.setAlpha(1f);
             return;
         }
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(150);
         animator.addUpdateListener(a -> {
-            if (textView != null) textView.setAlpha((Float) a.getAnimatedValue());
+            float v = (Float) a.getAnimatedValue();
+            if (textView != null) textView.setAlpha(v);
+            if (micIcon != null)  micIcon.setAlpha(v);
         });
         animator.start();
     }
 
+    private void startMicPulse() {
+        if (micIcon == null) return;
+        stopMicPulse();
+        if (!animationsEnabled) return;
+
+        ValueAnimator pulseAnim = ValueAnimator.ofFloat(1.0f, 1.1f);
+        pulseAnim.setDuration(800);
+        pulseAnim.setRepeatCount(ValueAnimator.INFINITE);
+        pulseAnim.setRepeatMode(ValueAnimator.REVERSE);
+        pulseAnim.setInterpolator(new AccelerateDecelerateInterpolator());
+        pulseAnim.addUpdateListener(a -> {
+            if (micIcon == null) return;
+            float scale = (Float) a.getAnimatedValue();
+            micIcon.setScaleX(scale);
+            micIcon.setScaleY(scale);
+        });
+        pulseAnim.start();
+        micIcon.setTag(pulseAnim);
+    }
+
+    private void stopMicPulse() {
+        if (micIcon == null) return;
+        Object tag = micIcon.getTag();
+        if (tag instanceof ValueAnimator) {
+            ((ValueAnimator) tag).cancel();
+            micIcon.setTag(null);
+        }
+        micIcon.setScaleX(1f);
+        micIcon.setScaleY(1f);
+        micIcon.setAlpha(1f);
+    }
+
+    private void cancelHideAnimator() {
+        if (hideAnimator != null) {
+            hideAnimator.cancel();
+            hideAnimator = null;
+        }
+    }
+
     private void hideWithAnimation() {
         if (!isShown || overlayView == null) return;
+        stopMicPulse();
+        cancelHideAnimator();
+
         if (!animationsEnabled) {
             overlayView.setVisibility(View.GONE);
             isShown = false;
             return;
         }
-        ValueAnimator animator = ValueAnimator.ofFloat(1f, 0f);
-        animator.setDuration(200);
-        animator.addUpdateListener(a -> {
+
+        hideAnimator = ValueAnimator.ofFloat(1f, 0f);
+        hideAnimator.setDuration(200);
+        hideAnimator.addUpdateListener(a -> {
             if (overlayView != null) overlayView.setAlpha((Float) a.getAnimatedValue());
         });
-        animator.addListener(new Animator.AnimatorListener() {
-            @Override public void onAnimationStart(Animator a) {}
-            @Override public void onAnimationEnd(Animator a) {
+        hideAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
                 if (overlayView != null) {
                     overlayView.setVisibility(View.GONE);
                     overlayView.setAlpha(1f);
-                    isShown = false;
                 }
+                isShown = false;
+                hideAnimator = null;
             }
-            @Override public void onAnimationCancel(Animator a) {}
-            @Override public void onAnimationRepeat(Animator a) {}
         });
-        animator.start();
+        hideAnimator.start();
     }
 
     private boolean hasOverlayPermission() {

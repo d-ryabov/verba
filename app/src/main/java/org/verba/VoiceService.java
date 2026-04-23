@@ -126,6 +126,7 @@ public class VoiceService extends Service {
                         voiceProcessor = new VoiceProcessor(
                                 this,
                                 config,
+                                true,
                                 result -> {
                                 },
                                 error -> {
