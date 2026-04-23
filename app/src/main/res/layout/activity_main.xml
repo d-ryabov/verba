@@ -84,8 +84,6 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Внешний вид -->
-
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -100,8 +98,6 @@
                 android:layout_marginTop="4dp"
                 android:textSize="21sp"
                 android:layout_marginBottom="12dp" />
-
-            <!-- Громкость -->
 
             <TextView
                 android:layout_width="match_parent"
@@ -129,8 +125,6 @@
                 android:layout_marginTop="2dp"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Канал звука -->
-
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -146,8 +140,6 @@
                 android:textSize="21sp"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Уведомления -->
-
             <CheckBox
                 android:id="@+id/cbDebugVoiceInput"
                 android:layout_width="match_parent"
@@ -155,8 +147,6 @@
                 android:text="Уведомлять о распознанном тексте"
                 android:textSize="18sp"
                 android:layout_marginBottom="16dp" />
-
-            <!-- Расширенные настройки — редко меняются -->
 
             <View
                 android:layout_width="match_parent"
@@ -172,8 +162,6 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Таймауты в одну строку -->
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -185,7 +173,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:hint="Таймаут распознания">
+                    android:hint="Таймаут распознания"
+                    android:layout_marginEnd="8dp">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etTimeoutShort"
@@ -201,8 +190,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:hint="Таймаут бездействия"
-                    android:layout_marginEnd="8dp">
+                    android:hint="Таймаут бездействия">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etTimeoutLong"
@@ -214,8 +202,6 @@
                 </com.google.android.material.textfield.TextInputLayout>
 
             </LinearLayout>
-
-            <!-- Интент и ключ в одну строку -->
 
             <LinearLayout
                 android:layout_width="match_parent"
