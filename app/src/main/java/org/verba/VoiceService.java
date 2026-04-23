@@ -10,7 +10,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationCompat;
@@ -19,34 +21,50 @@ import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
 public class VoiceService extends Service {
-    private static final String ACTION_VOICE_INIT = "org.verba.VOICE_INIT";
-    private static final String ACTION_VOICE = "org.verba.VOICE";
+    private static final String ACTION_VOICE_INIT  = "org.verba.VOICE_INIT";
+    private static final String ACTION_VOICE       = "org.verba.VOICE";
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";
-    private static final String ACTION_VOICE_STOP = "org.verba.VOICE_STOP";
+    private static final String ACTION_VOICE_STOP  = "org.verba.VOICE_STOP";
 
-    private static final String KEY_VOLUME_LEVEL = "volume_level";
-    private static final String KEY_INTENT_NAME = "intent_name";
-    private static final String KEY_TEXT_KEY = "text_key";
-    private static final String KEY_VOICE_DEBUG = "voice_debug";
-    private static final String KEY_TIMEOUT_LONG = "timeout_long";
+    private static final String KEY_VOLUME_LEVEL  = "volume_level";
+    private static final String KEY_INTENT_NAME   = "intent_name";
+    private static final String KEY_TEXT_KEY      = "text_key";
+    private static final String KEY_VOICE_DEBUG   = "voice_debug";
+    private static final String KEY_TIMEOUT_LONG  = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
 
-    private static final int DEFAULT_VOLUME_LEVEL = 60;
-    private static final String DEFAULT_INTENT_NAME = "com.dusiassistant.INPUT";
-    private static final String DEFAULT_TEXT_KEY = "text";
-    private static final long DEFAULT_TIMEOUT_LONG = 3200L;
-    private static final long DEFAULT_TIMEOUT_SHORT = 400L;
+    private static final int    DEFAULT_VOLUME_LEVEL  = 60;
+    private static final String DEFAULT_INTENT_NAME   = "com.dusiassistant.INPUT";
+    private static final String DEFAULT_TEXT_KEY      = "text";
+    private static final long   DEFAULT_TIMEOUT_LONG  = 3200L;
+    private static final long   DEFAULT_TIMEOUT_SHORT = 400L;
 
-    private static final int NOTIFICATION_ID = 1;
+    private static final int NOTIFICATION_ID         = 1;
     private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
-    private final Object startLock = new Object();
+
+    // Все обращения к состоянию — только на main thread через mainHandler.
+    // synchronized/volatile не нужны.
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     private SharedPreferences sharedPref;
     private VoiceConfig config;
     private VoiceProcessor voiceProcessor;
-    private volatile boolean isListening = false;
+    private boolean isListening  = false;
     private boolean isModelReady = false;
     private boolean pendingStart = false;
-    private boolean launchedFromVoiceActivity = false;
+
+    // ------------------------------------------------------------------ //
+    //  Lifecycle
+    // ------------------------------------------------------------------ //
+
+    private void loadSettings() {
+        int volumeLevel     = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
+        String intentName   = sharedPref.getString(KEY_INTENT_NAME, DEFAULT_INTENT_NAME);
+        String textKey      = sharedPref.getString(KEY_TEXT_KEY, DEFAULT_TEXT_KEY);
+        long timeoutLong    = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
+        long timeoutShort   = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort);
+    }
 
     @Override
     public void onCreate() {
@@ -54,6 +72,7 @@ public class VoiceService extends Service {
         LibVosk.setLogLevel(LogLevel.INFO);
         sharedPref = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
         loadSettings();
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
@@ -63,9 +82,11 @@ public class VoiceService extends Service {
                 startActivity(intent);
             }
         }
-        Notification notification = createNotification();
-        startForeground(NOTIFICATION_ID, notification);
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+
+        startForeground(NOTIFICATION_ID, createNotification());
+
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
             initModel();
         } else {
             stopSelf();
@@ -79,14 +100,11 @@ public class VoiceService extends Service {
         if (ACTION_VOICE_INIT.equals(action)) {
             loadSettings();
         } else if (ACTION_VOICE.equals(action)) {
-            launchedFromVoiceActivity = intent.getBooleanExtra("from_voice_activity", false);
             loadSettings();
-            synchronized (startLock) {
-                if (isModelReady && voiceProcessor != null) {
-                    startListeningInternal();
-                } else {
-                    pendingStart = true;
-                }
+            if (isModelReady) {
+                startListeningInternal();
+            } else {
+                pendingStart = true;
             }
         }
         return START_NOT_STICKY;
@@ -101,60 +119,74 @@ public class VoiceService extends Service {
     public void onDestroy() {
         super.onDestroy();
         if (voiceProcessor != null) {
+            voiceProcessor.stopListening(); // явная остановка перед release
             voiceProcessor.release();
             voiceProcessor = null;
         }
         isListening = false;
     }
 
-    private void loadSettings() {
-        int volumeLevel = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
-        String intentName = sharedPref.getString(KEY_INTENT_NAME, DEFAULT_INTENT_NAME);
-        String textKey = sharedPref.getString(KEY_TEXT_KEY, DEFAULT_TEXT_KEY);
-        boolean debugVoice = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
-        long timeoutLong = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
-        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
-        config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoice,
-                launchedFromVoiceActivity, timeoutLong, timeoutShort);
-    }
+    // ------------------------------------------------------------------ //
+    //  Model init
+    // ------------------------------------------------------------------ //
 
     private void initModel() {
         ModelManager.loadModel(
                 this,
-                () -> {
-                    synchronized (startLock) {
-                        voiceProcessor = new VoiceProcessor(
-                                this,
-                                config,
-                                true,
-                                result -> {
-                                },
-                                error -> {
-                                    isListening = false;
-                                },
-                                this::notifyVoiceStarted,
-                                this::notifyVoiceStopped
-                        );
-                        isModelReady = true;
-
-                        if (pendingStart) {
-                            pendingStart = false;
-                        }
+                // FIX(п.3): колбэк переносим на main thread — все обращения
+                // к состоянию сервиса всегда на одном потоке, без synchronized.
+                () -> mainHandler.post(() -> {
+                    isModelReady = true;
+                    if (pendingStart) {
+                        pendingStart = false;
+                        startListeningInternal(); // FIX(п.1): pendingStart теперь реально запускает старт
                     }
-                },
-                ex -> stopSelf()
+                }),
+                ex -> mainHandler.post(this::stopSelf)
         );
     }
 
+    // ------------------------------------------------------------------ //
+    //  Listening
+    // ------------------------------------------------------------------ //
+
     private void startListeningInternal() {
-        if (!isListening && voiceProcessor != null) {
-            voiceProcessor.startListening();
-            isListening = true;
-        }
+        if (isListening || !isModelReady) return;
+
+        // FIX(п.2): processor пересоздаётся при каждом старте с актуальным config
+        if (voiceProcessor != null) voiceProcessor.release();
+        voiceProcessor = new VoiceProcessor(
+                this,
+                config,
+                true, // overlayEnabled — запущено из сервиса
+                result -> { /* broadcast sent inside VoiceProcessor.sendRecognizedText() */ },
+                error -> isListening = false,
+                this::notifyVoiceStarted,
+                this::notifyVoiceStopped
+        );
+        voiceProcessor.startListening();
+        isListening = true;
     }
 
+    // ------------------------------------------------------------------ //
+    //  Broadcasts
+    // ------------------------------------------------------------------ //
+
+    private void notifyVoiceStarted() {
+        sendBroadcast(new Intent(ACTION_VOICE_START));
+    }
+
+    private void notifyVoiceStopped() {
+        sendBroadcast(new Intent(ACTION_VOICE_STOP));
+        isListening = false;
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Notification
+    // ------------------------------------------------------------------ //
+
     private Notification createNotification() {
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     NOTIFICATION_CHANNEL_ID,
@@ -164,7 +196,7 @@ public class VoiceService extends Service {
             channel.setSound(null, null);
             channel.enableVibration(false);
             channel.setShowBadge(false);
-            notificationManager.createNotificationChannel(channel);
+            nm.createNotificationChannel(channel);
         }
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle("Voice Recognition")
@@ -175,16 +207,9 @@ public class VoiceService extends Service {
                 .build();
     }
 
-    private void notifyVoiceStarted() {
-        Intent intent = new Intent(ACTION_VOICE_START);
-        sendBroadcast(intent);
-    }
-
-    private void notifyVoiceStopped() {
-        Intent intent = new Intent(ACTION_VOICE_STOP);
-        sendBroadcast(intent);
-        isListening = false;
-    }
+    // ------------------------------------------------------------------ //
+    //  Binder
+    // ------------------------------------------------------------------ //
 
     public class VoiceBinder extends Binder {
         public VoiceService getService() {

@@ -242,19 +242,16 @@ public class MainActivity extends AppCompatActivity {
         boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
         cbDebugVoiceInput.setChecked(debugVoiceInput);
 
-        config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoiceInput, false,
-                timeoutLong, timeoutShort);
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort);
     }
 
     private void saveSettings() {
-        long timeoutLong = parseLongSafely(etTimeoutLong.getText().toString(), DEFAULT_TIMEOUT_LONG);
+        long timeoutLong  = parseLongSafely(etTimeoutLong.getText().toString(), DEFAULT_TIMEOUT_LONG);
         long timeoutShort = parseLongSafely(etTimeoutShort.getText().toString(), DEFAULT_TIMEOUT_SHORT);
         config = new VoiceConfig(
                 (int) sliderVolume.getValue(),
                 etIntentName.getText().toString(),
                 etTextKey.getText().toString(),
-                cbDebugVoiceInput.isChecked(),
-                false,
                 timeoutLong,
                 timeoutShort
         );
@@ -265,6 +262,7 @@ public class MainActivity extends AppCompatActivity {
                 .putLong(KEY_TIMEOUT_SHORT, config.getTimeoutShort())
                 .apply();
     }
+
 
     private long parseLongSafely(String input, long defaultValue) {
         try {
