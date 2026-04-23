@@ -3,7 +3,6 @@ package org.verba;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
-import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.SoundPool;
 import android.os.Build;
@@ -14,6 +13,7 @@ import org.json.JSONObject;
 import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
+import org.verba.VoiceRecognitionOverlay;
 import java.util.function.Consumer;
 
 public class VoiceProcessor implements RecognitionListener {
@@ -30,10 +30,14 @@ public class VoiceProcessor implements RecognitionListener {
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
     private boolean hasReceivedFinalText = false;
+    private static final int OVERLAY_HIDE_DELAY_MS = 5000;
     private boolean isReduced = false;
     private int originalVolume;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
+    private VoiceRecognitionOverlay debugOverlay;
+    private final Handler finalResultHandler = new Handler(Looper.getMainLooper());
+    private Runnable finalHideRunnable;
 
     public VoiceProcessor(Context context, VoiceConfig config, Consumer<String> onResult, Consumer<String> onError, Runnable onStart, Runnable onStop) {
         this.context = context.getApplicationContext();
@@ -44,19 +48,6 @@ public class VoiceProcessor implements RecognitionListener {
         this.onVoiceStopCallback = onStop;
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         initSoundPool();
-    }
-
-    private void initSoundPool() {
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-        soundPool = new SoundPool.Builder()
-                .setMaxStreams(2)
-                .setAudioAttributes(audioAttributes)
-                .build();
-        startSoundId = soundPool.load(context, R.raw.mic_on, 1);
-        stopSoundId = soundPool.load(context, R.raw.mic_off, 1);
     }
 
     public void startListening() {
@@ -73,6 +64,12 @@ public class VoiceProcessor implements RecognitionListener {
             playStartSound();
             reduceVolume();
             startLongTimeout();
+            if (config.isVoiceDebug()) {
+                if (debugOverlay != null) debugOverlay.release();
+                debugOverlay = new VoiceRecognitionOverlay(context, true);
+                debugOverlay.init();
+                debugOverlay.showOverlay("Слушаю...");
+            }
         } catch (Exception e) {
             restoreVolume();
             onVoiceStopCallback.run();
@@ -91,6 +88,11 @@ public class VoiceProcessor implements RecognitionListener {
             speechService = null;
             restoreVolume();
             playStopSound();
+            if (debugOverlay != null) {
+                finalResultHandler.removeCallbacks(finalHideRunnable);
+                finalHideRunnable = () -> debugOverlay.showOverlay("");
+                finalResultHandler.postDelayed(finalHideRunnable, OVERLAY_HIDE_DELAY_MS);
+            }
             onVoiceStopCallback.run();
         }
     }
@@ -101,11 +103,31 @@ public class VoiceProcessor implements RecognitionListener {
             soundPool.release();
             soundPool = null;
         }
+
+        if (debugOverlay != null) {
+            debugOverlay.showOverlay("");
+            debugOverlay.release();
+            debugOverlay = null;
+        }
+        finalResultHandler.removeCallbacksAndMessages(null);
     }
 
     public void resetRecognitionState() {
         fullText.setLength(0);
         lastPartial = "";
+    }
+
+    private void initSoundPool() {
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        soundPool = new SoundPool.Builder()
+                .setMaxStreams(2)
+                .setAudioAttributes(audioAttributes)
+                .build();
+        startSoundId = soundPool.load(context, R.raw.mic_on, 1);
+        stopSoundId = soundPool.load(context, R.raw.mic_off, 1);
     }
 
     private void reduceVolume() {
@@ -209,7 +231,15 @@ public class VoiceProcessor implements RecognitionListener {
                 }
             }
 
-            onResultCallback.accept(fullText.toString().trim());
+            if (debugOverlay != null) {
+                if (!fullText.toString().trim().isEmpty()) {
+                    debugOverlay.showOverlay(fullText.toString().trim());
+                }
+            }
+
+            if (!fullText.toString().trim().isEmpty()) {
+                onResultCallback.accept(fullText.toString().trim());
+            }
         } catch (Exception e) {
             handler.post(() -> {
                 onErrorCallback.accept("Result parse error: " + e.getMessage());
@@ -226,23 +256,23 @@ public class VoiceProcessor implements RecognitionListener {
         resultIntent.setAction("org.verba.VOICE_RESULT");
         resultIntent.putExtra("result", text);
         context.sendBroadcast(resultIntent);
-        if (config.isFromVoiceActivity() && config.isVoiceDebug()) {
-            String displayText;
-            String appName = context.getString(R.string.app_name);
-            if (text == null || text.trim().isEmpty()) {
-                displayText = appName + ": Команда не распознана";
-            } else {
-                displayText = appName + ": Слышу \"" + text + "\"";
-            }
-            final String finalDisplayText = displayText;
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                Toast.makeText(context, finalDisplayText, Toast.LENGTH_LONG).show();
-            } else {
-                new Handler(Looper.getMainLooper()).post(() ->
-                        Toast.makeText(context, finalDisplayText, Toast.LENGTH_LONG).show()
-                );
-            }
-        }
+        //if (config.isFromVoiceActivity() && config.isVoiceDebug()) {
+        //    String displayText;
+        //    String appName = context.getString(R.string.app_name);
+        //    if (text == null || text.trim().isEmpty()) {
+        //        displayText = appName + ": Команда не распознана";
+        //    } else {
+        //        displayText = appName + ": Слышу \"" + text + "\"";
+        //    }
+        //    final String finalDisplayText = displayText;
+        //    if (Looper.myLooper() == Looper.getMainLooper()) {
+        //        Toast.makeText(context, finalDisplayText, Toast.LENGTH_LONG).show();
+        //    } else {
+        //        new Handler(Looper.getMainLooper()).post(() ->
+        //                Toast.makeText(context, finalDisplayText, Toast.LENGTH_LONG).show()
+        //        );
+        //    }
+        //}
     }
 
     @Override
@@ -258,7 +288,14 @@ public class VoiceProcessor implements RecognitionListener {
     @Override
     public void onFinalResult(String hypothesis) {
         handleVoskResult(hypothesis);
-        sendRecognizedText(fullText.toString().trim());
+        String finalText = fullText.toString().trim();
+        if (!finalText.isEmpty()) {
+            sendRecognizedText(finalText);
+        }
+
+        if (finalText.isEmpty() && !hasReceivedFinalText) {
+            return;
+        }
         handler.post(this::stopListening);
     }
 

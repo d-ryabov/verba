@@ -19,6 +19,7 @@ import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
 public class VoiceService extends Service {
+    private static final String ACTION_VOICE_INIT = "org.verba.VOICE_INIT";
     private static final String ACTION_VOICE = "org.verba.VOICE";
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";
     private static final String ACTION_VOICE_STOP = "org.verba.VOICE_STOP";
@@ -73,7 +74,11 @@ public class VoiceService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (ACTION_VOICE.equals(intent.getAction())) {
+        String action = intent != null ? intent.getAction() : null;
+
+        if (ACTION_VOICE_INIT.equals(action)) {
+            loadSettings();
+        } else if (ACTION_VOICE.equals(action)) {
             launchedFromVoiceActivity = intent.getBooleanExtra("from_voice_activity", false);
             loadSettings();
             synchronized (startLock) {
@@ -133,7 +138,6 @@ public class VoiceService extends Service {
 
                         if (pendingStart) {
                             pendingStart = false;
-                            startListeningInternal();
                         }
                     }
                 },

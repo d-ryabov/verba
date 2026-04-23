@@ -14,7 +14,7 @@ public class BootReceiver extends BroadcastReceiver {
                 || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(intent.getAction())
                 || ACTION_QUICKBOOT_POWERON.equals(intent.getAction())) {
             Intent serviceIntent = new Intent(context, VoiceService.class);
-            serviceIntent.setAction("org.verba.VOICE");
+            serviceIntent.setAction("org.verba.VOICE_INIT");
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent);
