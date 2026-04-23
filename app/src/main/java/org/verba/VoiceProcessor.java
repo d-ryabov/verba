@@ -293,7 +293,7 @@ public class VoiceProcessor implements RecognitionListener {
             sendRecognizedText(finalText);
             scheduleOverlayHide();
         }
-        // Empty final result with no prior input: let timeout handle stop
+
         if (finalText.isEmpty() && !hasReceivedFinalText) return;
         handler.post(this::stopListening);
     }

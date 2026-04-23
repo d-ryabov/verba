@@ -42,8 +42,6 @@ public class VoiceService extends Service {
     private static final int NOTIFICATION_ID         = 1;
     private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
 
-    // Все обращения к состоянию — только на main thread через mainHandler.
-    // synchronized/volatile не нужны.
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private SharedPreferences sharedPref;
@@ -52,10 +50,6 @@ public class VoiceService extends Service {
     private boolean isListening  = false;
     private boolean isModelReady = false;
     private boolean pendingStart = false;
-
-    // ------------------------------------------------------------------ //
-    //  Lifecycle
-    // ------------------------------------------------------------------ //
 
     private void loadSettings() {
         int volumeLevel     = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
@@ -119,46 +113,35 @@ public class VoiceService extends Service {
     public void onDestroy() {
         super.onDestroy();
         if (voiceProcessor != null) {
-            voiceProcessor.stopListening(); // явная остановка перед release
+            voiceProcessor.stopListening();
             voiceProcessor.release();
             voiceProcessor = null;
         }
         isListening = false;
     }
 
-    // ------------------------------------------------------------------ //
-    //  Model init
-    // ------------------------------------------------------------------ //
-
     private void initModel() {
         ModelManager.loadModel(
                 this,
-                // FIX(п.3): колбэк переносим на main thread — все обращения
-                // к состоянию сервиса всегда на одном потоке, без synchronized.
                 () -> mainHandler.post(() -> {
                     isModelReady = true;
                     if (pendingStart) {
                         pendingStart = false;
-                        startListeningInternal(); // FIX(п.1): pendingStart теперь реально запускает старт
+                        startListeningInternal();
                     }
                 }),
                 ex -> mainHandler.post(this::stopSelf)
         );
     }
 
-    // ------------------------------------------------------------------ //
-    //  Listening
-    // ------------------------------------------------------------------ //
-
     private void startListeningInternal() {
         if (isListening || !isModelReady) return;
 
-        // FIX(п.2): processor пересоздаётся при каждом старте с актуальным config
         if (voiceProcessor != null) voiceProcessor.release();
-        voiceProcessor = new VoiceProcessor(
-                this,
+        boolean overlayEnabled = sharedPref.getBoolean("voice_debug", false);
+        voiceProcessor = new VoiceProcessor(this,
                 config,
-                true, // overlayEnabled — запущено из сервиса
+                overlayEnabled,
                 result -> { /* broadcast sent inside VoiceProcessor.sendRecognizedText() */ },
                 error -> isListening = false,
                 this::notifyVoiceStarted,
@@ -168,10 +151,6 @@ public class VoiceService extends Service {
         isListening = true;
     }
 
-    // ------------------------------------------------------------------ //
-    //  Broadcasts
-    // ------------------------------------------------------------------ //
-
     private void notifyVoiceStarted() {
         sendBroadcast(new Intent(ACTION_VOICE_START));
     }
@@ -180,10 +159,6 @@ public class VoiceService extends Service {
         sendBroadcast(new Intent(ACTION_VOICE_STOP));
         isListening = false;
     }
-
-    // ------------------------------------------------------------------ //
-    //  Notification
-    // ------------------------------------------------------------------ //
 
     private Notification createNotification() {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -206,10 +181,6 @@ public class VoiceService extends Service {
                 .setSilent(true)
                 .build();
     }
-
-    // ------------------------------------------------------------------ //
-    //  Binder
-    // ------------------------------------------------------------------ //
 
     public class VoiceBinder extends Binder {
         public VoiceService getService() {

@@ -1,7 +1,5 @@
 package org.verba;
 
-import static android.app.Service.START_STICKY;
-
 import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -12,7 +10,6 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
@@ -289,34 +286,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startListening() {
-        isRecording = true;
-        updateMicButtonState();
-        if (voiceProcessor == null) {
-            voiceProcessor = new VoiceProcessor(
-                    this,
-                    config,
-                    false,
-                    result -> runOnUiThread(() -> etResult.setText(result)),
-                    error -> runOnUiThread(() -> setErrorState(error)),
-                    () -> runOnUiThread(() -> {
-                        isRecording = true;
-                        updateMicButtonState();
-                    }),
-                    () -> runOnUiThread(() -> {
-                        isRecording = false;
-                        updateMicButtonState();
-                    })
-            );
-        }
+        if (voiceProcessor != null) voiceProcessor.release();
+        voiceProcessor = new VoiceProcessor(
+                this, config, false,
+                result -> runOnUiThread(() -> etResult.setText(result)),
+                error  -> runOnUiThread(() -> setErrorState(error)),
+                () -> runOnUiThread(() -> { isRecording = true;  updateMicButtonState(); }),
+                () -> runOnUiThread(() -> { isRecording = false; updateMicButtonState(); })
+        );
         voiceProcessor.startListening();
     }
 
     private void stopListening() {
-        isRecording = false;
-        updateMicButtonState();
-        if (voiceProcessor != null) {
-            voiceProcessor.stopListening();
-        }
+        if (voiceProcessor != null) voiceProcessor.stopListening();
     }
 
     private void updateMicButtonState() {
@@ -369,6 +351,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if (voiceProcessor != null) {
+            voiceProcessor.stopListening();
             voiceProcessor.release();
             voiceProcessor = null;
         }

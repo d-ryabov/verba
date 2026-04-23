@@ -37,7 +37,6 @@ public class VoiceActivity extends android.app.Activity {
             }
         }
 
-        // Проверка разрешения на отображение поверх других окон
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:" + getPackageName()));
