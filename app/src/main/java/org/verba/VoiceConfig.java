@@ -7,15 +7,18 @@ public class VoiceConfig {
     private final long timeoutLong;
     private final long timeoutShort;
     private final String audioStreamType;
+    private final int preferredMicDeviceId;
 
     public VoiceConfig(int volumeReduceLevel, String intentName, String intentExtraKeyName,
-                       long timeoutLong, long timeoutShort, String audioStreamType) {
+                       long timeoutLong, long timeoutShort, String audioStreamType,
+                       int preferredMicDeviceId) {
         this.volumeReduceLevel = volumeReduceLevel;
         this.intentName = intentName;
         this.intentExtraKeyName = intentExtraKeyName;
         this.timeoutLong  = Math.max(200, Math.min(10000, timeoutLong));
         this.timeoutShort = Math.max(200, Math.min(10000, timeoutShort));
         this.audioStreamType = audioStreamType != null ? audioStreamType : "sonification";
+        this.preferredMicDeviceId = preferredMicDeviceId;
     }
 
     public int getVolumeReduceLevel()    { return volumeReduceLevel; }
@@ -24,4 +27,5 @@ public class VoiceConfig {
     public long getTimeoutLong()         { return timeoutLong; }
     public long getTimeoutShort()        { return timeoutShort; }
     public String getAudioStreamType()   { return audioStreamType; }
+    public int getPreferredMicDeviceId() { return preferredMicDeviceId; }
 }

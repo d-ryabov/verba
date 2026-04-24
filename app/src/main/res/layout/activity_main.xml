@@ -140,6 +140,22 @@
                 android:textSize="21sp"
                 android:layout_marginBottom="12dp" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Микрофон:"
+                android:textSize="18sp"
+                android:layout_marginTop="4dp" />
+
+            <Spinner
+                android:id="@+id/spinnerMicrophone"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="4dp"
+                android:textSize="21sp"
+                android:layout_marginBottom="12dp" />
+
+
             <CheckBox
                 android:id="@+id/cbDebugVoiceInput"
                 android:layout_width="match_parent"
