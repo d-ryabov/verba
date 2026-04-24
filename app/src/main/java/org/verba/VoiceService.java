@@ -93,6 +93,8 @@ public class VoiceService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        startForeground(NOTIFICATION_ID, createNotification());
+
         String action = intent != null ? intent.getAction() : null;
 
         if (ACTION_VOICE_INIT.equals(action)) {
