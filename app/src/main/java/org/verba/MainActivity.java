@@ -8,6 +8,8 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -16,6 +18,7 @@ import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.Spinner;
@@ -33,6 +36,9 @@ import com.google.android.material.textfield.TextInputEditText;
 import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "app_settings";
     private static final String KEY_THEME = "app_theme";
@@ -43,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_TIMEOUT_LONG = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
     private static final String KEY_AUDIO_STREAM = "audio_stream";
+    private static final String KEY_MIC_DEVICE_ID = "mic_device_id";
     private static final long DEFAULT_TIMEOUT_LONG = 3200L;
     private static final long DEFAULT_TIMEOUT_SHORT = 400L;
     private static final int PERMISSIONS_REQUEST_RECORD_AUDIO = 1;
@@ -57,12 +64,15 @@ public class MainActivity extends AppCompatActivity {
     private TextInputEditText etResult, etIntentName, etTextKey, etTimeoutLong, etTimeoutShort;
     private Spinner spinnerTheme;
     private Spinner spinnerAudioStream;
+    private Spinner spinnerMicrophone;
     private Slider sliderVolume;
     private CheckBox cbDebugVoiceInput;
     private boolean isRecording = false;
     private boolean isSpinnerSettingProgrammatically = false;
     private Animation pulseAnimation;
     private VoiceProcessor voiceProcessor;
+
+    private final List<Integer> micDeviceIds = new ArrayList<>();
 
     private final BroadcastReceiver voiceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -76,15 +86,14 @@ public class MainActivity extends AppCompatActivity {
                 updateMicButtonState();
             } else if (ACTION_VOICE_RESULT.equals(action)) {
                 String result = intent.getStringExtra("result");
-                if (result != null) {
-                    etResult.setText(result);
-                }
+                if (result != null) etResult.setText(result);
             }
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         setThemeBasedOnPreferences();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
@@ -93,12 +102,17 @@ public class MainActivity extends AppCompatActivity {
         setupListeners();
         TextView tvCopyright = findViewById(R.id.tvCopyright);
         String appName = getString(R.string.app_name);
-        tvCopyright.setText("© 2026 " + appName + "\nРазработано с использованием vosk\nТолько для некоммерческого использования");
+        tvCopyright.setText("© 2026 " + appName
+                + "\nРазработано с использованием vosk"
+                + "\nТолько для некоммерческого использования");
         statusText.setText(R.string.preparing);
         LibVosk.setLogLevel(LogLevel.INFO);
-        int permissionCheck = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO);
+        int permissionCheck = ContextCompat.checkSelfPermission(
+                getApplicationContext(), Manifest.permission.RECORD_AUDIO);
         if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSIONS_REQUEST_RECORD_AUDIO);
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    PERMISSIONS_REQUEST_RECORD_AUDIO);
         } else {
             initModel();
         }
@@ -124,27 +138,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initViews() {
-        micButton        = findViewById(R.id.btnMicrophone);
-        statusText       = findViewById(R.id.tvStatus);
-        etResult         = findViewById(R.id.etResult);
-        etIntentName     = findViewById(R.id.etIntentName);
-        etTextKey        = findViewById(R.id.etTextKey);
-        etTimeoutLong    = findViewById(R.id.etTimeoutLong);
-        etTimeoutShort   = findViewById(R.id.etTimeoutShort);
-        spinnerTheme      = findViewById(R.id.spinnerTheme);
+        micButton          = findViewById(R.id.btnMicrophone);
+        statusText         = findViewById(R.id.tvStatus);
+        etResult           = findViewById(R.id.etResult);
+        etIntentName       = findViewById(R.id.etIntentName);
+        etTextKey          = findViewById(R.id.etTextKey);
+        etTimeoutLong      = findViewById(R.id.etTimeoutLong);
+        etTimeoutShort     = findViewById(R.id.etTimeoutShort);
+        spinnerTheme       = findViewById(R.id.spinnerTheme);
         spinnerAudioStream = findViewById(R.id.spinnerAudioStream);
-        sliderVolume      = findViewById(R.id.sliderVolume);
-        tvVolumeValue     = findViewById(R.id.tvVolumeValue);
-        cbDebugVoiceInput = findViewById(R.id.cbDebugVoiceInput);
-        pulseAnimation    = AnimationUtils.loadAnimation(this, R.anim.pulse_animation);
+        spinnerMicrophone  = findViewById(R.id.spinnerMicrophone);
+        sliderVolume       = findViewById(R.id.sliderVolume);
+        tvVolumeValue      = findViewById(R.id.tvVolumeValue);
+        cbDebugVoiceInput  = findViewById(R.id.cbDebugVoiceInput);
+        pulseAnimation     = AnimationUtils.loadAnimation(this, R.anim.pulse_animation);
         micButton.setOnClickListener(v -> {
-            if (isRecording) {
-                stopListening();
-            } else {
-                startListening();
-            }
+            if (isRecording) stopListening();
+            else startListening();
         });
         micButton.setEnabled(false);
+
+        populateMicrophoneSpinner();
+    }
+
+    private void populateMicrophoneSpinner() {
+        AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        AudioDeviceInfo[] inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+
+        micDeviceIds.clear();
+        List<String> labels = new ArrayList<>();
+
+        micDeviceIds.add(-1);
+        labels.add("Авто");
+
+        for (AudioDeviceInfo d : inputs) {
+            if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                micDeviceIds.add(d.getId());
+                String name = d.getProductName() != null && d.getProductName().length() > 0
+                        ? d.getProductName().toString()
+                        : "Встроенный";
+                labels.add(d.getId() + ": " + name);
+            }
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinnerMicrophone.setAdapter(adapter);
     }
 
     private void setupListeners() {
@@ -163,9 +203,7 @@ public class MainActivity extends AppCompatActivity {
                     recreate();
                 }
             }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         spinnerAudioStream.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -175,23 +213,28 @@ public class MainActivity extends AppCompatActivity {
                 String[] keys = {"sonification", "notification", "media"};
                 String value = keys[position];
                 sharedPref.edit().putString(KEY_AUDIO_STREAM, value).apply();
-                if (voiceProcessor != null) {
-                    voiceProcessor.release();
-                    voiceProcessor = null;
-                }
+                if (voiceProcessor != null) { voiceProcessor.release(); voiceProcessor = null; }
                 saveSettings();
             }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
 
+        spinnerMicrophone.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (isSpinnerSettingProgrammatically) return;
+                int deviceId = micDeviceIds.get(position);
+                sharedPref.edit().putInt(KEY_MIC_DEVICE_ID, deviceId).apply();
+                if (voiceProcessor != null) { voiceProcessor.release(); voiceProcessor = null; }
+                saveSettings();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         sliderVolume.addOnChangeListener((slider, value, fromUser) -> {
             int level = (int) value;
             tvVolumeValue.setText(String.valueOf(level));
-            if (fromUser) {
-                sharedPref.edit().putInt(KEY_VOLUME_LEVEL, level).apply();
-            }
+            if (fromUser) sharedPref.edit().putInt(KEY_VOLUME_LEVEL, level).apply();
         });
 
         View.OnFocusChangeListener saveListener = (v, hasFocus) -> {
@@ -200,7 +243,6 @@ public class MainActivity extends AppCompatActivity {
                 String input = editText.getText().toString();
                 long correctedValue;
                 long defaultValue;
-
                 if (v.getId() == R.id.etTimeoutLong) {
                     defaultValue = DEFAULT_TIMEOUT_LONG;
                     correctedValue = parseLongSafely(input, defaultValue);
@@ -216,7 +258,6 @@ public class MainActivity extends AppCompatActivity {
                         editText.setSelection(editText.getText().length());
                     }
                 }
-
                 saveSettings();
             }
         };
@@ -226,9 +267,8 @@ public class MainActivity extends AppCompatActivity {
         etTimeoutLong.setOnFocusChangeListener(saveListener);
         etTimeoutShort.setOnFocusChangeListener(saveListener);
 
-        cbDebugVoiceInput.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sharedPref.edit().putBoolean(KEY_VOICE_DEBUG, isChecked).apply();
-        });
+        cbDebugVoiceInput.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sharedPref.edit().putBoolean(KEY_VOICE_DEBUG, isChecked).apply());
     }
 
     private void loadSettings() {
@@ -240,26 +280,19 @@ public class MainActivity extends AppCompatActivity {
         spinnerTheme.setSelection(spinnerSelection);
         isSpinnerSettingProgrammatically = false;
 
-        int volumeReduceLevelDefault = 60;
-        int volumeLevel = sharedPref.getInt(KEY_VOLUME_LEVEL, volumeReduceLevelDefault);
+        int volumeLevel = sharedPref.getInt(KEY_VOLUME_LEVEL, 60);
         sliderVolume.setValue(volumeLevel);
         tvVolumeValue.setText(String.valueOf(volumeLevel));
 
-        String intentDefault = "com.dusiassistant.INPUT";
-        String intentName = sharedPref.getString(KEY_INTENT_NAME, intentDefault);
-        etIntentName.setText(intentName);
+        etIntentName.setText(sharedPref.getString(KEY_INTENT_NAME, "com.dusiassistant.INPUT"));
+        etTextKey.setText(sharedPref.getString(KEY_TEXT_KEY, "text"));
 
-        String keyDefault = "text";
-        String textKey = sharedPref.getString(KEY_TEXT_KEY, keyDefault);
-        etTextKey.setText(textKey);
+        etTimeoutLong.setText(String.valueOf(
+                sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG)));
+        etTimeoutShort.setText(String.valueOf(
+                sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT)));
 
-        long timeoutLong  = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
-        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
-        etTimeoutLong.setText(String.valueOf(timeoutLong));
-        etTimeoutShort.setText(String.valueOf(timeoutShort));
-
-        boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
-        cbDebugVoiceInput.setChecked(debugVoiceInput);
+        cbDebugVoiceInput.setChecked(sharedPref.getBoolean(KEY_VOICE_DEBUG, false));
 
         String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
         int audioStreamSelection = 0;
@@ -269,20 +302,33 @@ public class MainActivity extends AppCompatActivity {
         spinnerAudioStream.setSelection(audioStreamSelection);
         isSpinnerSettingProgrammatically = false;
 
-        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort, audioStream);
+        int savedMicId = sharedPref.getInt(KEY_MIC_DEVICE_ID, -1);
+        int micSelection = 0;
+        for (int i = 0; i < micDeviceIds.size(); i++) {
+            if (micDeviceIds.get(i) == savedMicId) { micSelection = i; break; }
+        }
+        isSpinnerSettingProgrammatically = true;
+        spinnerMicrophone.setSelection(micSelection);
+        isSpinnerSettingProgrammatically = false;
+
+        config = buildConfig(volumeLevel, audioStream, savedMicId);
     }
 
     private void saveSettings() {
         long timeoutLong  = parseLongSafely(etTimeoutLong.getText().toString(), DEFAULT_TIMEOUT_LONG);
         long timeoutShort = parseLongSafely(etTimeoutShort.getText().toString(), DEFAULT_TIMEOUT_SHORT);
-        String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
+        String[] streamKeys = {"sonification", "notification", "media"};
+        String audioStream = streamKeys[spinnerAudioStream.getSelectedItemPosition()];
+        int micPos = spinnerMicrophone.getSelectedItemPosition();
+        int micDeviceId = micDeviceIds.isEmpty() ? -1 : micDeviceIds.get(micPos);
         config = new VoiceConfig(
                 (int) sliderVolume.getValue(),
                 etIntentName.getText().toString(),
                 etTextKey.getText().toString(),
                 timeoutLong,
                 timeoutShort,
-                audioStream
+                audioStream,
+                micDeviceId
         );
         sharedPref.edit()
                 .putString(KEY_INTENT_NAME, config.getIntentName())
@@ -290,6 +336,20 @@ public class MainActivity extends AppCompatActivity {
                 .putLong(KEY_TIMEOUT_LONG, config.getTimeoutLong())
                 .putLong(KEY_TIMEOUT_SHORT, config.getTimeoutShort())
                 .apply();
+    }
+
+    private VoiceConfig buildConfig(int volumeLevel, String audioStream, int micDeviceId) {
+        long timeoutLong  = parseLongSafely(etTimeoutLong.getText().toString(), DEFAULT_TIMEOUT_LONG);
+        long timeoutShort = parseLongSafely(etTimeoutShort.getText().toString(), DEFAULT_TIMEOUT_SHORT);
+        return new VoiceConfig(
+                volumeLevel,
+                etIntentName.getText().toString(),
+                etTextKey.getText().toString(),
+                timeoutLong,
+                timeoutShort,
+                audioStream,
+                micDeviceId
+        );
     }
 
     private long parseLongSafely(String input, long defaultValue) {
@@ -330,12 +390,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateMicButtonState() {
         if (isRecording) {
-            micButton.setBackground(ContextCompat.getDrawable(this, R.drawable.shape_mic_button_active));
+            micButton.setBackground(
+                    ContextCompat.getDrawable(this, R.drawable.shape_mic_button_active));
             micButton.setColorFilter(Color.WHITE);
             statusText.setText(R.string.say_something);
             micButton.startAnimation(pulseAnimation);
         } else {
-            micButton.setBackground(ContextCompat.getDrawable(this, R.drawable.shape_mic_button));
+            micButton.setBackground(
+                    ContextCompat.getDrawable(this, R.drawable.shape_mic_button));
             micButton.clearColorFilter();
             statusText.setText(R.string.ready);
             micButton.clearAnimation();
@@ -363,7 +425,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSIONS_REQUEST_RECORD_AUDIO) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {

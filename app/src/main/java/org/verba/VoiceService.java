@@ -33,6 +33,7 @@ public class VoiceService extends Service {
     private static final String KEY_TIMEOUT_LONG  = "timeout_long";
     private static final String KEY_TIMEOUT_SHORT = "timeout_short";
     private static final String KEY_AUDIO_STREAM = "audio_stream";
+    private static final String KEY_MIC_DEVICE_ID = "mic_device_id";
 
 
     private static final int    DEFAULT_VOLUME_LEVEL  = 60;
@@ -60,7 +61,9 @@ public class VoiceService extends Service {
         long timeoutLong  = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
         long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
         String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
-        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort, audioStream);
+        int savedMicId = sharedPref.getInt(KEY_MIC_DEVICE_ID, -1);
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort,
+                audioStream, savedMicId);
     }
 
 

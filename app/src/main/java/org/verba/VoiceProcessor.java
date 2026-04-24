@@ -18,6 +18,8 @@ import android.os.Looper;
 import android.os.Process;
 import android.util.Log;
 
+import androidx.annotation.MainThread;
+
 import org.json.JSONObject;
 import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
@@ -27,7 +29,7 @@ import java.util.function.Consumer;
 public class VoiceProcessor implements RecognitionListener {
     private static final String TAG = "VoiceProcessor";
     private static final int SAMPLE_RATE = 16000;
-    private static final int READ_BUFFER_SIZE = 1024;
+    private static final int READ_BUFFER_SIZE = 2048;
 
     private final Context context;
     private final VoiceConfig config;
@@ -54,11 +56,12 @@ public class VoiceProcessor implements RecognitionListener {
 
     private final StringBuilder fullText = new StringBuilder();
     private String lastPartial = "";
+    private int lastPartialStart = -1;
     private boolean hasReceivedFinalText = false;
     private boolean hasReceivedAnyInput = false;
 
-    private boolean isReduced = false;
-    private int originalVolume;
+    private volatile boolean isReduced = false;
+    private volatile int originalVolume;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
@@ -113,12 +116,17 @@ public class VoiceProcessor implements RecognitionListener {
     }
 
     public void stopListening() {
-        if (!isListening && audioRecord == null) return;
+        if (!isListening && audioRecord == null && recognizer == null) return;
         cancelTimeout();
         isListening = false;
 
         if (recordingThread != null) {
             recordingThread.interrupt();
+            try {
+                recordingThread.join(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             recordingThread = null;
         }
         cleanupAudio();
@@ -131,10 +139,6 @@ public class VoiceProcessor implements RecognitionListener {
         cancelTimeout();
         cancelOverlayHide();
         stopListening();
-        if (recognizer != null) {
-            recognizer.close();
-            recognizer = null;
-        }
         if (soundPool != null) {
             soundPool.release();
             soundPool = null;
@@ -148,6 +152,7 @@ public class VoiceProcessor implements RecognitionListener {
     public void resetRecognitionState() {
         fullText.setLength(0);
         lastPartial = "";
+        lastPartialStart = -1;
         hasReceivedFinalText = false;
         hasReceivedAnyInput = false;
         cancelOverlayHide();
@@ -204,22 +209,43 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void selectDriverMicrophone() {
         AudioDeviceInfo[] inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+
+        int preferredId = config.getPreferredMicDeviceId();
         AudioDeviceInfo best = null;
+
         for (AudioDeviceInfo d : inputs) {
             Log.d(TAG, "MIC device: id=" + d.getId()
                     + " type=" + d.getType()
                     + " name=" + d.getProductName());
+
             if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
-                // Первый встроенный мик обычно соответствует микрофону водителя.
-                // Если в логах видно, что нужный имеет другой id — задай его явно здесь.
-                if (best == null) best = d;
+                if (preferredId > 0) {
+                    if (d.getId() == preferredId) {
+                        best = d;
+                        break;
+                    }
+                } else {
+                    if (best == null) best = d;
+                }
             }
         }
+
+        if (best == null && preferredId > 0) {
+            Log.w(TAG, "Preferred mic id=" + preferredId + " not found, falling back to first builtin");
+            for (AudioDeviceInfo d : inputs) {
+                if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                    best = d;
+                    break;
+                }
+            }
+        }
+
         if (best != null) {
             boolean ok = audioRecord.setPreferredDevice(best);
             Log.d(TAG, "setPreferredDevice id=" + best.getId() + " success=" + ok);
         }
     }
+
 
     private void cleanupAudio() {
         if (noiseSuppressor != null) { noiseSuppressor.release(); noiseSuppressor = null; }
@@ -264,16 +290,19 @@ public class VoiceProcessor implements RecognitionListener {
         }
     }
 
+    @MainThread
     @Override
     public void onPartialResult(String hypothesis) {
         handleVoskResult(hypothesis);
     }
 
+    @MainThread
     @Override
     public void onResult(String hypothesis) {
         handleVoskResult(hypothesis);
     }
 
+    @MainThread
     @Override
     public void onFinalResult(String hypothesis) {
         handleVoskResult(hypothesis);
@@ -286,10 +315,12 @@ public class VoiceProcessor implements RecognitionListener {
         }
     }
 
+    @MainThread
     @Override
     public void onError(Exception e) {
         handler.post(() -> {
             cancelTimeout();
+            isListening = false;
             if (overlay != null) {
                 overlay.stopPulse();
                 overlay.showOverlay("Ошибка распознания");
@@ -302,6 +333,7 @@ public class VoiceProcessor implements RecognitionListener {
         });
     }
 
+    @MainThread
     @Override
     public void onTimeout() {
         handler.post(this::onInternalTimeout);
@@ -314,13 +346,13 @@ public class VoiceProcessor implements RecognitionListener {
             if (obj.has("partial")) {
                 String partial = obj.getString("partial");
                 if (!partial.isEmpty() && !partial.equals(lastPartial)) {
-                    if (!lastPartial.isEmpty()) {
-                        int start = fullText.lastIndexOf(lastPartial);
-                        if (start != -1) fullText.delete(start, start + lastPartial.length());
+                    if (!lastPartial.isEmpty() && lastPartialStart != -1) {
+                        fullText.delete(lastPartialStart, lastPartialStart + lastPartial.length());
                     }
                     if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
                         fullText.append(" ");
                     }
+                    lastPartialStart = fullText.length();
                     fullText.append(partial);
                     lastPartial = partial;
                     hasReceivedAnyInput = true;
@@ -332,10 +364,10 @@ public class VoiceProcessor implements RecognitionListener {
             if (obj.has("text")) {
                 String text = obj.getString("text");
                 if (!text.isEmpty()) {
-                    if (!lastPartial.isEmpty()) {
-                        int start = fullText.lastIndexOf(lastPartial);
-                        if (start != -1) fullText.replace(start, start + lastPartial.length(), text);
+                    if (!lastPartial.isEmpty() && lastPartialStart != -1) {
+                        fullText.replace(lastPartialStart, lastPartialStart + lastPartial.length(), text);
                         lastPartial = "";
+                        lastPartialStart = -1;
                     } else {
                         if (fullText.length() > 0 && fullText.charAt(fullText.length() - 1) != ' ') {
                             fullText.append(" ");
@@ -384,6 +416,8 @@ public class VoiceProcessor implements RecognitionListener {
     }
 
     private void onInternalTimeout() {
+        if (!isListening) return;
+
         timeoutRunnable = null;
         if (overlay != null) {
             overlay.stopPulse();
@@ -409,37 +443,46 @@ public class VoiceProcessor implements RecognitionListener {
         handler.postDelayed(overlayHideRunnable, config.getTimeoutLong());
     }
 
-    private int getAudioStream() {
+    private static class AudioStreamConfig {
+        final int stream;
+        final int usage;
+        final int contentType;
+
+        AudioStreamConfig(int stream, int usage, int contentType) {
+            this.stream = stream;
+            this.usage = usage;
+            this.contentType = contentType;
+        }
+    }
+
+    private AudioStreamConfig resolveAudioStreamConfig() {
         switch (config.getAudioStreamType()) {
-            case "notification":  return AudioManager.STREAM_NOTIFICATION;
-            case "media":         return AudioManager.STREAM_MUSIC;
-            case "sonification":  return AudioManager.STREAM_RING;
-            default:              return AudioManager.STREAM_RING;
+            case "notification":
+                return new AudioStreamConfig(
+                        AudioManager.STREAM_NOTIFICATION,
+                        AudioAttributes.USAGE_NOTIFICATION,
+                        AudioAttributes.CONTENT_TYPE_SONIFICATION);
+            case "media":
+                return new AudioStreamConfig(
+                        AudioManager.STREAM_MUSIC,
+                        AudioAttributes.USAGE_MEDIA,
+                        AudioAttributes.CONTENT_TYPE_MUSIC);
+            case "sonification":
+            default:
+                return new AudioStreamConfig(
+                        AudioManager.STREAM_RING,
+                        AudioAttributes.USAGE_ASSISTANCE_SONIFICATION,
+                        AudioAttributes.CONTENT_TYPE_SONIFICATION);
         }
     }
 
     private void initSoundPool() {
-        int usage, contentType;
-        switch (config.getAudioStreamType()) {
-            case "notification":
-                usage = AudioAttributes.USAGE_NOTIFICATION;
-                contentType = AudioAttributes.CONTENT_TYPE_SONIFICATION;
-                break;
-            case "media":
-                usage = AudioAttributes.USAGE_MEDIA;
-                contentType = AudioAttributes.CONTENT_TYPE_MUSIC;
-                break;
-            case "sonification":
-            default:
-                usage = AudioAttributes.USAGE_ASSISTANCE_SONIFICATION;
-                contentType = AudioAttributes.CONTENT_TYPE_SONIFICATION;
-                break;
-        }
+        AudioStreamConfig cfg = resolveAudioStreamConfig();
         soundPool = new SoundPool.Builder()
                 .setMaxStreams(2)
                 .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(usage)
-                        .setContentType(contentType)
+                        .setUsage(cfg.usage)
+                        .setContentType(cfg.contentType)
                         .build())
                 .build();
         startSoundId = soundPool.load(context, R.raw.mic_on, 1);
@@ -448,7 +491,7 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void reduceVolume() {
         if (!isReduced) {
-            int stream = getAudioStream();
+            int stream = resolveAudioStreamConfig().stream;
             originalVolume = audioManager.getStreamVolume(stream);
             int newVolume = Math.max(0, originalVolume * (100 - config.getVolumeReduceLevel()) / 100);
             audioManager.setStreamVolume(stream, newVolume, 0);
@@ -458,7 +501,7 @@ public class VoiceProcessor implements RecognitionListener {
 
     private void restoreVolume() {
         if (isReduced) {
-            audioManager.setStreamVolume(getAudioStream(), originalVolume, 0);
+            audioManager.setStreamVolume(resolveAudioStreamConfig().stream, originalVolume, 0);
             isReduced = false;
         }
     }
