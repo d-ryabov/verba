@@ -211,7 +211,7 @@ public class VoiceRecognitionOverlay {
         stopMicPulse();
         if (!animationsEnabled) return;
 
-        ValueAnimator pulseAnim = ValueAnimator.ofFloat(1.0f, 1.1f);
+        ValueAnimator pulseAnim = ValueAnimator.ofFloat(1.0f, 1.15f);
         pulseAnim.setDuration(800);
         pulseAnim.setRepeatCount(ValueAnimator.INFINITE);
         pulseAnim.setRepeatMode(ValueAnimator.REVERSE);
