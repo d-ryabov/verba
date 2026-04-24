@@ -59,6 +59,7 @@ public class VoiceProcessor implements RecognitionListener {
     private int lastPartialStart = -1;
     private boolean hasReceivedFinalText = false;
     private boolean hasReceivedAnyInput = false;
+    private boolean resultDispatched = false;
 
     private volatile boolean isReduced = false;
     private volatile int originalVolume;
@@ -155,6 +156,7 @@ public class VoiceProcessor implements RecognitionListener {
         lastPartialStart = -1;
         hasReceivedFinalText = false;
         hasReceivedAnyInput = false;
+        resultDispatched = false;
         cancelOverlayHide();
     }
 
@@ -246,11 +248,10 @@ public class VoiceProcessor implements RecognitionListener {
         }
     }
 
-
     private void cleanupAudio() {
         if (noiseSuppressor != null) { noiseSuppressor.release(); noiseSuppressor = null; }
-        if (echoCanceler != null)    { echoCanceler.release();    echoCanceler = null; }
-        if (gainControl != null)     { gainControl.release();     gainControl = null; }
+        if (echoCanceler != null) { echoCanceler.release(); echoCanceler = null; }
+        if (gainControl != null) { gainControl.release(); gainControl = null; }
         if (audioRecord != null) {
             try {
                 audioRecord.stop();
@@ -306,13 +307,10 @@ public class VoiceProcessor implements RecognitionListener {
     @Override
     public void onFinalResult(String hypothesis) {
         handleVoskResult(hypothesis);
-        String finalText = fullText.toString().trim();
-        if (!finalText.isEmpty()) {
-            if (overlay != null) overlay.stopPulse();
-            sendRecognizedText(finalText);
-            scheduleOverlayHide();
-            handler.post(this::stopListening);
-        }
+        if (overlay != null) overlay.stopPulse();
+        sendCurrentTextIfNeeded();
+        scheduleOverlayHide();
+        handler.post(this::stopListening);
     }
 
     @MainThread
@@ -399,6 +397,16 @@ public class VoiceProcessor implements RecognitionListener {
         context.sendBroadcast(resultIntent);
     }
 
+    private void sendCurrentTextIfNeeded() {
+        if (resultDispatched) return;
+
+        String text = fullText.toString().trim();
+        if (!text.isEmpty()) {
+            resultDispatched = true;
+            sendRecognizedText(text);
+        }
+    }
+
     private void cancelTimeout() {
         if (timeoutRunnable != null) {
             handler.removeCallbacks(timeoutRunnable);
@@ -406,7 +414,7 @@ public class VoiceProcessor implements RecognitionListener {
         }
     }
 
-    private void startLongTimeout()  { scheduleTimeout(config.getTimeoutLong()); }
+    private void startLongTimeout() { scheduleTimeout(config.getTimeoutLong()); }
     private void startShortTimeout() { scheduleTimeout(config.getTimeoutShort()); }
 
     private void scheduleTimeout(long delayMs) {
@@ -419,6 +427,8 @@ public class VoiceProcessor implements RecognitionListener {
         if (!isListening) return;
 
         timeoutRunnable = null;
+        sendCurrentTextIfNeeded();
+
         if (overlay != null) {
             overlay.stopPulse();
             if (!hasReceivedAnyInput) overlay.showOverlay("Команда не распознана");
@@ -486,7 +496,7 @@ public class VoiceProcessor implements RecognitionListener {
                         .build())
                 .build();
         startSoundId = soundPool.load(context, R.raw.mic_on, 1);
-        stopSoundId  = soundPool.load(context, R.raw.mic_off, 1);
+        stopSoundId = soundPool.load(context, R.raw.mic_off, 1);
     }
 
     private void reduceVolume() {
