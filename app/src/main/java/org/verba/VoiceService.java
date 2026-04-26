@@ -10,7 +10,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationCompat;
@@ -19,29 +21,59 @@ import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 
 public class VoiceService extends Service {
-    private static final String KEY_VOLUME_LEVEL = "volume_level";
-    private static final String KEY_INTENT_NAME = "intent_name";
-    private static final String KEY_TEXT_KEY = "text_key";
-    private static final String KEY_VOICE_DEBUG = "voice_debug";
-    private static final String KEY_TIMEOUT_LONG = "timeout_long";
-    private static final String KEY_TIMEOUT_SHORT = "timeout_short";
-    private static final long DEFAULT_TIMEOUT_LONG = 3200L;
-    private static final long DEFAULT_TIMEOUT_SHORT = 400L;
-    private static final int NOTIFICATION_ID = 1;
-    private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
+    private static final String ACTION_VOICE_INIT  = "org.verba.VOICE_INIT";
+    private static final String ACTION_VOICE       = "org.verba.VOICE";
     private static final String ACTION_VOICE_START = "org.verba.VOICE_START";
-    private static final String ACTION_VOICE_STOP = "org.verba.VOICE_STOP";
+    private static final String ACTION_VOICE_STOP  = "org.verba.VOICE_STOP";
+
+    private static final String KEY_VOLUME_LEVEL  = "volume_level";
+    private static final String KEY_INTENT_NAME   = "intent_name";
+    private static final String KEY_TEXT_KEY      = "text_key";
+    private static final String KEY_VOICE_DEBUG   = "voice_debug";
+    private static final String KEY_TIMEOUT_LONG  = "timeout_long";
+    private static final String KEY_TIMEOUT_SHORT = "timeout_short";
+    private static final String KEY_AUDIO_STREAM = "audio_stream";
+    private static final String KEY_MIC_DEVICE_ID = "mic_device_id";
+
+
+    private static final int    DEFAULT_VOLUME_LEVEL  = 60;
+    private static final String DEFAULT_INTENT_NAME   = "com.dusiassistant.INPUT";
+    private static final String DEFAULT_TEXT_KEY      = "text";
+    private static final long   DEFAULT_TIMEOUT_LONG  = 3200L;
+    private static final long   DEFAULT_TIMEOUT_SHORT = 400L;
+
+    private static final int NOTIFICATION_ID         = 1;
+    private static final String NOTIFICATION_CHANNEL_ID = "voice_channel";
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     private SharedPreferences sharedPref;
     private VoiceConfig config;
     private VoiceProcessor voiceProcessor;
-    private boolean isListening = false;
-    private boolean launchedFromVoiceActivity = false;
+    private boolean isListening  = false;
+    private boolean isModelReady = false;
+    private boolean pendingStart = false;
+
+    private void loadSettings() {
+        int volumeLevel   = sharedPref.getInt(KEY_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL);
+        String intentName = sharedPref.getString(KEY_INTENT_NAME, DEFAULT_INTENT_NAME);
+        String textKey    = sharedPref.getString(KEY_TEXT_KEY, DEFAULT_TEXT_KEY);
+        long timeoutLong  = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
+        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
+        String audioStream = sharedPref.getString(KEY_AUDIO_STREAM, "sonification");
+        int savedMicId = sharedPref.getInt(KEY_MIC_DEVICE_ID, -1);
+        config = new VoiceConfig(volumeLevel, intentName, textKey, timeoutLong, timeoutShort,
+                audioStream, savedMicId);
+    }
+
 
     @Override
     public void onCreate() {
         super.onCreate();
         LibVosk.setLogLevel(LogLevel.INFO);
         sharedPref = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+        loadSettings();
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
@@ -51,9 +83,11 @@ public class VoiceService extends Service {
                 startActivity(intent);
             }
         }
-        Notification notification = createNotification();
-        startForeground(NOTIFICATION_ID, notification);
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+
+        startForeground(NOTIFICATION_ID, createNotification());
+
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
             initModel();
         } else {
             stopSelf();
@@ -62,19 +96,81 @@ public class VoiceService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if ("org.verba.VOICE".equals(intent.getAction())) {
-            launchedFromVoiceActivity = intent.getBooleanExtra("from_voice_activity", false);
+        startForeground(NOTIFICATION_ID, createNotification());
+
+        String action = intent != null ? intent.getAction() : null;
+
+        if (ACTION_VOICE_INIT.equals(action)) {
             loadSettings();
-            if (!isListening && voiceProcessor != null) {
-                voiceProcessor.startListening();
-                isListening = true;
+        } else if (ACTION_VOICE.equals(action)) {
+            loadSettings();
+            if (isModelReady) {
+                startListeningInternal();
+            } else {
+                pendingStart = true;
             }
         }
         return START_NOT_STICKY;
     }
 
+    @Override
+    public IBinder onBind(Intent intent) {
+        return new VoiceBinder();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (voiceProcessor != null) {
+            voiceProcessor.stopListening();
+            voiceProcessor.release();
+            voiceProcessor = null;
+        }
+        isListening = false;
+    }
+
+    private void initModel() {
+        ModelManager.loadModel(
+                this,
+                () -> mainHandler.post(() -> {
+                    isModelReady = true;
+                    if (pendingStart) {
+                        pendingStart = false;
+                        startListeningInternal();
+                    }
+                }),
+                ex -> mainHandler.post(this::stopSelf)
+        );
+    }
+
+    private void startListeningInternal() {
+        if (isListening || !isModelReady) return;
+
+        if (voiceProcessor != null) voiceProcessor.release();
+        boolean overlayEnabled = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
+        voiceProcessor = new VoiceProcessor(this,
+                config,
+                overlayEnabled,
+                result -> { /* broadcast sent inside VoiceProcessor.sendRecognizedText() */ },
+                error -> isListening = false,
+                this::notifyVoiceStarted,
+                this::notifyVoiceStopped
+        );
+        voiceProcessor.startListening();
+        isListening = true;
+    }
+
+    private void notifyVoiceStarted() {
+        sendBroadcast(new Intent(ACTION_VOICE_START));
+    }
+
+    private void notifyVoiceStopped() {
+        sendBroadcast(new Intent(ACTION_VOICE_STOP));
+        isListening = false;
+    }
+
     private Notification createNotification() {
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     NOTIFICATION_CHANNEL_ID,
@@ -84,7 +180,7 @@ public class VoiceService extends Service {
             channel.setSound(null, null);
             channel.enableVibration(false);
             channel.setShowBadge(false);
-            notificationManager.createNotificationChannel(channel);
+            nm.createNotificationChannel(channel);
         }
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle("Voice Recognition")
@@ -95,66 +191,9 @@ public class VoiceService extends Service {
                 .build();
     }
 
-    private void loadSettings() {
-        int volumeReduceLevelDefault = 60;
-        int volumeLevel = sharedPref.getInt(KEY_VOLUME_LEVEL, volumeReduceLevelDefault);
-        String intentDefault = "com.dusiassistant.INPUT";
-        String intentName = sharedPref.getString(KEY_INTENT_NAME, intentDefault);
-        String keyDefault = "text";
-        String textKey = sharedPref.getString(KEY_TEXT_KEY, keyDefault);
-        boolean debugVoiceInput = sharedPref.getBoolean(KEY_VOICE_DEBUG, false);
-        long timeoutLong = sharedPref.getLong(KEY_TIMEOUT_LONG, DEFAULT_TIMEOUT_LONG);
-        long timeoutShort = sharedPref.getLong(KEY_TIMEOUT_SHORT, DEFAULT_TIMEOUT_SHORT);
-        config = new VoiceConfig(volumeLevel, intentName, textKey, debugVoiceInput, launchedFromVoiceActivity,
-                timeoutLong, timeoutShort);
-    }
-
-    private void initModel() {
-        ModelManager.loadModel(
-                this,
-                () -> {
-                    voiceProcessor = new VoiceProcessor(
-                            this,
-                            config,
-                            result -> {},
-                            error -> stopSelf(),
-                            this::notifyVoiceStarted,
-                            this::notifyVoiceStopped
-                    );
-                },
-                ex -> stopSelf()
-        );
-    }
-
-    private void notifyVoiceStarted() {
-        Intent intent = new Intent(ACTION_VOICE_START);
-        sendBroadcast(intent);
-    }
-
-    private void notifyVoiceStopped() {
-        Intent intent = new Intent(ACTION_VOICE_STOP);
-        sendBroadcast(intent);
-        isListening = false;
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return new VoiceBinder();
-    }
-
     public class VoiceBinder extends Binder {
         public VoiceService getService() {
             return VoiceService.this;
         }
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        if (voiceProcessor != null) {
-            voiceProcessor.release();
-            voiceProcessor = null;
-        }
-        isListening = false;
     }
 }

@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Основные цвета -->
-    <color name="primaryColor">#3B82F6</color>          <!-- Яркий голубой (акцент) -->
-    <color name="primaryColorDark">#2563EB</color>
-    <color name="accentColor">#9CE3F5</color>           <!-- Тот же мягкий неоновый бирюзовый -->
-
+    <color name="primaryColor">#3779F3</color>
+    <color name="primaryColorDark">#3779F3</color>
+    <color name="accentColor">#3779F3</color>
     <!-- Фоны -->
-    <color name="backgroundColor">#080C20</color>       <!-- Глубокий сине-фиолетовый (почти чёрный) -->
-    <color name="surfaceColor">#0A1028</color>          <!-- Почти чёрный с синим оттенком -->
+    <color name="backgroundColor">#0C0F14</color>
+    <color name="surfaceColor">#0C0F14</color>
 
     <!-- Текст -->
-    <color name="textPrimary">#FFFFFF</color>           <!-- Белый текст -->
-    <color name="textSecondary">#C0C0C0</color>         <!-- Серебристый для вторичного текста -->
+    <color name="textPrimary">#EAF1F6</color>
+    <color name="textSecondary">#EAF1F6</color>
 
     <!-- Микрофон -->
-    <color name="micIdle">#0D122A</color>               <!-- Очень тёмно-синий -->
-    <color name="micActive">#26A69A</color>             <!-- Глубокий бирюзовый (Material Teal 500) -->
+    <color name="micIdle">#161B22</color>
+    <color name="micActive">#3779F3</color>
 </resources>
