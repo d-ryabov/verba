@@ -502,16 +502,16 @@ public class VoiceProcessor implements RecognitionListener {
     private void reduceVolume() {
         if (!isReduced) {
             int stream = resolveAudioStreamConfig().stream;
-            originalVolume = audioManager.getStreamVolume(stream);
+            originalVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
             int newVolume = Math.max(0, originalVolume * (100 - config.getVolumeReduceLevel()) / 100);
-            audioManager.setStreamVolume(stream, newVolume, 0);
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0);
             isReduced = true;
         }
     }
 
     private void restoreVolume() {
         if (isReduced) {
-            audioManager.setStreamVolume(resolveAudioStreamConfig().stream, originalVolume, 0);
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0);
             isReduced = false;
         }
     }
