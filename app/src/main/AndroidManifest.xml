@@ -14,6 +14,7 @@
         android:label="@string/app_name"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@style/AppTheme"
+        android:persistent="true"
         tools:targetApi="s">
 
         <activity
