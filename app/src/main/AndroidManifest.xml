@@ -42,15 +42,12 @@
             android:name=".VoiceActivity"
             android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
-            android:label="@string/app_name_voice"
-            android:icon="@mipmap/ic_voice"
             android:taskAffinity="org.verba.voice"
             android:excludeFromRecents="true"
             android:noHistory="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
             <intent-filter>
