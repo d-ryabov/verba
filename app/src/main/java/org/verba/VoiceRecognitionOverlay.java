@@ -32,13 +32,13 @@ public class VoiceRecognitionOverlay {
     private static final int WIN_LEFT     = 756;
     private static final int WIN_BOTTOM   = 185;
     private static final int WIN_WIDTH    = 529;
-    private static final int WIN_MIN_H    = 120;
+    private static final int WIN_MIN_H    = 104;
     private static final int MIC_LEFT     = 48;
     private static final int MIC_SIZE     = 80;
     private static final int ICON_PAD     = 16;
     private static final int TEXT_LEFT    = 169;
 
-    private static final int MIN_PAD_DP    = 16;
+    private static final int MIN_PAD_DP    = 12;
     private static final int MIN_RADIUS_DP = 36;
     private static final int TEXT_SP       = 32;
     private static final int MIN_TEXT_SP   = 28;
