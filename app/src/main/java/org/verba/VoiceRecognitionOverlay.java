@@ -30,16 +30,16 @@ import android.widget.ImageView;
 
 public class VoiceRecognitionOverlay {
     private static final int WIN_LEFT     = 756;
-    private static final int WIN_BOTTOM   = 185;
+    private static final int WIN_BOTTOM   = 184;
     private static final int WIN_WIDTH    = 529;
     private static final int WIN_H        = 100;
-    private static final int MIC_LEFT     = 48;
-    private static final int MIC_SIZE     = 80;
-    private static final int ICON_PAD     = 16;
-    private static final int TEXT_LEFT    = 169;
+    private static final int MIC_LEFT     = 14;
+    private static final int MIC_SIZE     = 72;
+    private static final int ICON_PAD     = 12;
+    private static final int TEXT_LEFT    = 100;
 
-    private static final int MIN_PAD_DP    = 12;
-    private static final int MIN_RADIUS_DP = 36;
+    private static final int MIN_PAD_DP    = 24;
+    private static final int MIN_RADIUS_DP = 50;
     private static final int TEXT_SP       = 28;
     private static final int MIN_TEXT_SP   = 28;
 
