@@ -24,7 +24,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.view.animation.DecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -43,15 +43,15 @@ public class VoiceRecognitionOverlay {
     private static final int TEXT_SP       = 32;
     private static final int MIN_TEXT_SP   = 28;
 
-    private static final int REVEAL_OPEN_MS  = 180;
-    private static final int REVEAL_CLOSE_MS = 135;
+    private static final int REVEAL_OPEN_MS  = 300;
+    private static final int REVEAL_CLOSE_MS = 220;
     private static final int PULSE_MS        = 800;
     private static final float PULSE_SCALE   = 1.1f;
 
     private final Context context;
     private final boolean animationsEnabled;
     private final DisplayMetrics metrics;
-    private final DecelerateInterpolator revealInterpolator = new DecelerateInterpolator();
+    private final PathInterpolator revealInterpolator = new PathInterpolator(0.4f, 0f, 0.2f, 1f);
     private final Rect clipRect = new Rect();
 
     private final int padPx;
