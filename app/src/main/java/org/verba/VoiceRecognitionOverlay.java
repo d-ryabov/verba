@@ -30,7 +30,7 @@ import android.widget.ImageView;
 
 public class VoiceRecognitionOverlay {
     private static final int WIN_LEFT     = 756;
-    private static final int WIN_BOTTOM   = 190;
+    private static final int WIN_BOTTOM   = 185;
     private static final int WIN_WIDTH    = 529;
     private static final int WIN_MIN_H    = 120;
     private static final int MIC_LEFT     = 48;
