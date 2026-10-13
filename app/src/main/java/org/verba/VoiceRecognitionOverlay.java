@@ -36,7 +36,7 @@ public class VoiceRecognitionOverlay {
     private static final int MIC_LEFT     = 14;
     private static final int MIC_SIZE     = 72;
     private static final int ICON_PAD     = 12;
-    private static final int TEXT_LEFT    = 100;
+    private static final int TEXT_LEFT    = 112;
 
     private static final int MIN_PAD_DP    = 24;
     private static final int MIN_RADIUS_DP = 50;
