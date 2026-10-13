@@ -30,7 +30,7 @@ import android.widget.ImageView;
 
 public class VoiceRecognitionOverlay {
     private static final int WIN_LEFT     = 696;
-    private static final int WIN_CENTER_Y = 148;
+    private static final int WIN_BOTTOM   = 208;
     private static final int WIN_WIDTH    = 529;
     private static final int WIN_MIN_H    = 120;
     private static final int MIC_LEFT     = 48;
@@ -68,6 +68,7 @@ public class VoiceRecognitionOverlay {
     private int activeCircleColor;
 
     private WindowManager windowManager;
+    private WindowManager.LayoutParams layoutParams;
     private FrameLayout overlayView;
     private TailTextView textView;
     private ImageView micIcon;
@@ -109,8 +110,10 @@ public class VoiceRecognitionOverlay {
 
         overlayView = createOverlayView();
         overlayView.setVisibility(View.INVISIBLE);
+        layoutParams = createLayoutParams();
         try {
-            windowManager.addView(overlayView, createLayoutParams());
+            windowManager.addView(overlayView, layoutParams);
+            overlayView.post(this::correctOffset);
         } catch (Exception ignored) {}
     }
 
@@ -164,6 +167,21 @@ public class VoiceRecognitionOverlay {
         micIcon       = null;
         micBg         = null;
         windowManager = null;
+        layoutParams  = null;
+    }
+
+    private void correctOffset() {
+        if (overlayView == null || windowManager == null || layoutParams == null) return;
+        int[] loc = new int[2];
+        overlayView.getLocationOnScreen(loc);
+        int dx = WIN_LEFT - loc[0];
+        int dy = (WIN_BOTTOM - winHeightPx) - loc[1];
+        if (dx == 0 && dy == 0) return;
+        layoutParams.x += dx;
+        layoutParams.y += dy;
+        try {
+            windowManager.updateViewLayout(overlayView, layoutParams);
+        } catch (Exception ignored) {}
     }
 
     private boolean isNight() {
@@ -241,7 +259,7 @@ public class VoiceRecognitionOverlay {
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.x = WIN_LEFT;
-        lp.y = WIN_CENTER_Y - winHeightPx / 2;
+        lp.y = WIN_BOTTOM - winHeightPx;
         return lp;
     }
 
