@@ -10,10 +10,11 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@drawable/icon"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@style/AppTheme"
+        android:persistent="true"
         tools:targetApi="s">
 
         <activity
@@ -41,15 +42,12 @@
             android:name=".VoiceActivity"
             android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
-            android:label="@string/app_name_voice"
-            android:icon="@drawable/micon"
             android:taskAffinity="org.verba.voice"
             android:excludeFromRecents="true"
             android:noHistory="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
             <intent-filter>
@@ -61,12 +59,12 @@
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
-            android:exported="true">
-            <intent-filter android:priority="1000">
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
-                <category android:name="android.intent.category.DEFAULT" />
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 

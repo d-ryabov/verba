@@ -183,9 +183,8 @@ public class VoiceService extends Service {
             nm.createNotificationChannel(channel);
         }
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setContentTitle("Voice Recognition")
-                .setContentText("Listening...")
-                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(getString(R.string.app_name) + ": voice recognition")
+                .setSmallIcon(R.mipmap.ic_voice)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setSilent(true)
                 .build();
